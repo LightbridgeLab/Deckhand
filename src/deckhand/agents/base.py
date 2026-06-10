@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Awaitable, Callable, Iterable, Optional
@@ -34,6 +35,7 @@ class AgentBase(ABC):
         self.capabilities = list(capabilities)
         self.project_root = project_root
         self.active_file = active_file
+        self.updated_at = time.time()
         self.on_event: Optional[EventHandler] = None
 
     @property
@@ -58,11 +60,13 @@ class AgentBase(ABC):
             "project_root": self.project_root,
             "active_file": self.active_file,
             "display_label": self.display_label,
+            "updated_at": self.updated_at,
         }
         return d
 
     async def _set_status(self, status: AgentStatus) -> None:
         self.status = status
+        self.updated_at = time.time()
         await self._emit_event(
             build_event(
                 "agent.status_changed",

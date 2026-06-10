@@ -25,6 +25,12 @@ class Orchestrator:
         agent.on_event = self.event_bus.emit
         self.agents[agent.id] = agent
 
+    def unregister_agent(self, agent_id: str) -> AgentBase | None:
+        agent = self.agents.pop(agent_id, None)
+        if agent is not None:
+            agent.on_event = None
+        return agent
+
     def list_agents(self) -> Iterable[AgentBase]:
         return self.agents.values()
 

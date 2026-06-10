@@ -38,3 +38,8 @@ modules = [
 # level = "INFO"
 # Log format: "plain" (human-readable) or "json" (structured, one record per line)
 # format = "plain"
+
+[dev]
+# Web dev console at http://127.0.0.1:8000/dev/ (agents, state, events, virtual buttons).
+# Default: enabled when service host is localhost, disabled otherwise.
+# enabled = true

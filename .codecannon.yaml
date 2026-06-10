@@ -5,6 +5,11 @@
 #
 # See CodeCannon/config.schema.yaml for documentation on each placeholder.
 
+# Which skill group to enable. Exactly one per project.
+# Available groups are sibling directories under CodeCannon/skills/.
+# Today's options: github-agile
+skill_group: github-agile
+
 # Which agent adapters to generate skills for.
 # Available: claude, cursor, gemini, codex
 adapters:

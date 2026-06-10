@@ -30,3 +30,18 @@
 - [x] Remote Deckhand Core support (DECKHAND_URL env var)
 - [x] State persistence (JSON file, survives service restarts)
 - [x] API key authentication (optional, for HTTP and WebSocket)
+
+## Backlog
+
+### Integrations & plugins
+
+- [x] Integration recipes: Home Assistant webhook + RSS poller patterns ([docs/INTEGRATIONS.md](docs/INTEGRATIONS.md))
+- [ ] Sample non-agent plugin in-repo (e.g. minimal RSS or HA webhook shim) — deferred
+
+### OpenDeck client
+
+- [ ] **Data Widget multi-state** — Map `state_key` values to multi-state button images (parity with Agent Status idle/running/input/error), e.g. JSONPath or rule-based state index from structured state values
+
+### Core platform
+
+- [ ] **Plugin shutdown hook** — Optional async cleanup when the service stops, for background pollers started from `register()` (RSS, MQTT, periodic sync)

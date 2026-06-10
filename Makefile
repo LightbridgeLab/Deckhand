@@ -17,8 +17,11 @@ install: ## Install all dependencies via uv
 dev: ## Start dev server with hot reload
 	uv run python -m uvicorn deckhand.main:app --app-dir src --reload --host 127.0.0.1 --port 8000
 
+dev-console: ## Print dev console URL (requires make dev)
+	@echo "Dev console: http://127.0.0.1:8000/dev/"
+
 test: ## Run test suite
-	uv run pytest tests/ -v --asyncio-mode=auto
+	uv run --extra test pytest tests/ -v --asyncio-mode=auto
 
 lint: ## Run ruff linter
 	uvx ruff check $(SRC_DIRS)
