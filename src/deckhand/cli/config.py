@@ -13,7 +13,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from deckhand.config.loader import load_config
+from deckhand.config.loader import load_config, resolve_project_path
 
 DEFAULT_URL = "http://127.0.0.1:8000"
 DEFAULT_EVENT_LOG = ".deckhand/events.log"
@@ -39,7 +39,9 @@ def load(
     if not config_path and Path("config.toml").exists():
         config_path = "config.toml"
 
+    resolved_config_path: str | None = None
     if config_path and Path(config_path).exists():
+        resolved_config_path = config_path
         config = load_config(config_path)
 
         service = config.get("service", {})
@@ -60,8 +62,9 @@ def load(
 
     url = url_flag or os.getenv("DECKHAND_URL") or file_url or DEFAULT_URL
     api_key = api_key_flag or os.getenv("DECKHAND_API_KEY") or file_key
-    event_log_path = Path(
+    event_log_raw = (
         os.getenv("DECKHAND_EVENT_LOG") or file_event_log or DEFAULT_EVENT_LOG
     )
+    event_log_path = resolve_project_path(event_log_raw, resolved_config_path)
 
     return CliConfig(url=url, api_key=api_key, event_log_path=event_log_path)

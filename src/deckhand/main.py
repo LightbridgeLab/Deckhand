@@ -88,7 +88,7 @@ async def lifespan(app: FastAPI):
     logger.info(f"  API keys: {len(settings.api_keys)} configured")
     logger.info(f"  Rate limit: {settings.rate_limit_rpm} req/min")
     logger.info(
-        f"  Event log: {'enabled @ ' + settings.event_log_path if settings.event_log_enabled else 'disabled'}"
+        f"  Event log: {'enabled @ ' + str(settings.event_log_path) if settings.event_log_enabled else 'disabled'}"
     )
     logger.info(f"  Plugins: {', '.join(settings.plugin_modules)}")
 

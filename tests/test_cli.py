@@ -275,6 +275,70 @@ def test_events_tail_log_missing(tmp_path: Path) -> None:
         events_cmd.tail_log(tmp_path / "missing.log", [], follow=False)
 
 
+def test_events_tail_log_detects_truncation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Truncation under the reader is recognized and the file is re-read."""
+    log = tmp_path / "events.log"
+    log.write_text(json.dumps({"type": "a", "n": 1}) + "\n")
+
+    # Drive the follow loop in lockstep:
+    # step 1 truncates to empty; step 2 writes the new event; step 3 exits.
+    state = {"step": 0}
+
+    def driver(_seconds: float) -> None:
+        state["step"] += 1
+        if state["step"] == 1:
+            log.write_text("")  # truncate to zero bytes
+        elif state["step"] == 2:
+            log.write_text(json.dumps({"type": "b", "n": 2}) + "\n")
+        else:
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr("deckhand.cli.commands.events.time.sleep", driver)
+
+    try:
+        events_cmd.tail_log(log, [], follow=True)
+    except KeyboardInterrupt:
+        pass
+
+    events = _parse_json_stream(capsys.readouterr().out)
+    assert {e["n"] for e in events} == {1, 2}
+
+
+def test_events_tail_log_detects_rotation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Renaming the log and creating a fresh one under the same name re-reads it."""
+    log = tmp_path / "events.log"
+    log.write_text(json.dumps({"type": "a", "n": 1}) + "\n")
+
+    state = {"step": 0}
+
+    def driver(_seconds: float) -> None:
+        state["step"] += 1
+        if state["step"] == 1:
+            # Rotate: rename current file, create fresh one at same path
+            log.rename(tmp_path / "events.log.1")
+            log.write_text(json.dumps({"type": "b", "n": 2}) + "\n")
+        else:
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr("deckhand.cli.commands.events.time.sleep", driver)
+
+    try:
+        events_cmd.tail_log(log, [], follow=True)
+    except KeyboardInterrupt:
+        pass
+
+    events = _parse_json_stream(capsys.readouterr().out)
+    assert {e["n"] for e in events} == {1, 2}
+
+
 # ----------------------------------------------------------- Config -------
 
 
@@ -291,7 +355,9 @@ def test_config_defaults(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Non
     cfg = cli_config.load()
     assert cfg.url == cli_config.DEFAULT_URL
     assert cfg.api_key is None
-    assert cfg.event_log_path == Path(cli_config.DEFAULT_EVENT_LOG)
+    # Relative default resolves against cwd when no config.toml is present.
+    assert cfg.event_log_path == (tmp_path / cli_config.DEFAULT_EVENT_LOG).resolve()
+    assert cfg.event_log_path.is_absolute()
 
 
 def test_config_flag_overrides_env(
@@ -324,7 +390,48 @@ def test_config_env_overrides_file(
     cfg = cli_config.load()
     assert cfg.url == "http://env:8000"
     assert cfg.api_key == "env-key"
+    # Absolute paths pass through unchanged.
     assert cfg.event_log_path == Path("/from-file/events.log")
+
+
+def test_config_relative_log_resolves_against_config_dir(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A relative event_log.path anchors to config.toml's directory, not cwd."""
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    (project_dir / "config.toml").write_text(
+        '[event_log]\npath = ".deckhand/events.log"\n'
+    )
+
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    for var in ("DECKHAND_URL", "DECKHAND_API_KEY", "DECKHAND_EVENT_LOG"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("DECKHAND_CONFIG_FILE", str(project_dir / "config.toml"))
+
+    cfg = cli_config.load()
+    assert cfg.event_log_path == (project_dir / ".deckhand" / "events.log").resolve()
+
+
+def test_config_env_log_relative_resolves_against_config_dir(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """DECKHAND_EVENT_LOG=<relative> also anchors to config.toml's directory."""
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    (project_dir / "config.toml").write_text("")
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    for var in ("DECKHAND_URL", "DECKHAND_API_KEY"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("DECKHAND_CONFIG_FILE", str(project_dir / "config.toml"))
+    monkeypatch.setenv("DECKHAND_EVENT_LOG", "logs/x.log")
+
+    cfg = cli_config.load()
+    assert cfg.event_log_path == (project_dir / "logs" / "x.log").resolve()
 
 
 def test_config_file_only(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

@@ -321,4 +321,4 @@ Use the same key in Home Assistant `rest_command` headers and in `.env` / `confi
 
 - **Push + state:** `lights.status_webhook` in [examples/example_plugin.py](../examples/example_plugin.py)
 - **Push + TTL:** `camera.motion` in `src/deckhand/plugins/builtin.py`
-- **Dev console:** Virtual **Data Widget** tile + signal fire — [DEV_CONSOLE_PARITY.md](DEV_CONSOLE_PARITY.md)
+- **CLI:** `deckhand signals fire <name> --payload '{...}'` for ad-hoc testing without OpenDeck.

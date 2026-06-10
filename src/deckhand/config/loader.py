@@ -7,6 +7,23 @@ from pathlib import Path
 from typing import Any
 
 
+def resolve_project_path(raw: str | Path, config_file: str | Path | None) -> Path:
+    """Resolve a possibly-relative project path.
+
+    Absolute paths are returned as-is. Relative paths anchor to the directory
+    containing ``config_file`` when one was loaded, otherwise to the current
+    working directory. The server and CLI use this so the same relative path
+    in ``config.toml`` resolves to the same location regardless of where
+    each process is started from.
+    """
+    path = Path(raw).expanduser()
+    if path.is_absolute():
+        return path
+    if config_file:
+        return (Path(config_file).expanduser().resolve().parent / path).resolve()
+    return (Path.cwd() / path).resolve()
+
+
 def load_config(file_path: str | Path | None) -> dict[str, Any]:
     """
     Load configuration from TOML file.

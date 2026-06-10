@@ -36,17 +36,20 @@ class EventLogger:
         return self._path
 
     async def __call__(self, event: dict[str, Any]) -> None:
+        try:
+            line = json.dumps(event, default=_json_default) + "\n"
+        except (TypeError, ValueError) as exc:
+            logger.warning("Failed to serialize event for log: %s", exc)
+            return
         async with self._lock:
-            if not self._dir_ready:
-                self._path.parent.mkdir(parents=True, exist_ok=True)
-                self._dir_ready = True
-            try:
-                line = json.dumps(event, default=_json_default) + "\n"
-            except (TypeError, ValueError) as exc:
-                logger.warning("Failed to serialize event for log: %s", exc)
-                return
-            with self._path.open("a", encoding="utf-8") as fh:
-                fh.write(line)
+            await asyncio.to_thread(self._write_line, line)
+
+    def _write_line(self, line: str) -> None:
+        if not self._dir_ready:
+            self._path.parent.mkdir(parents=True, exist_ok=True)
+            self._dir_ready = True
+        with self._path.open("a", encoding="utf-8") as fh:
+            fh.write(line)
 
 
 def _json_default(value: Any) -> Any:
