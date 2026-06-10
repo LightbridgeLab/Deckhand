@@ -10,7 +10,9 @@ from deckhand.agents.ranking import (
 )
 
 
-def _agent(agent_id: str, status: str, updated_at: float, agent_type: str = "cursor") -> dict:
+def _agent(
+    agent_id: str, status: str, updated_at: float, agent_type: str = "cursor"
+) -> dict:
     return {
         "id": agent_id,
         "type": agent_type,

@@ -52,9 +52,7 @@ def agent_for_slot(
     return ranked[offset]
 
 
-def needs_attention(
-    agents: list[dict[str, Any]], agent_filter: str = "*"
-) -> bool:
+def needs_attention(agents: list[dict[str, Any]], agent_filter: str = "*") -> bool:
     return any(
         a.get("status") in ATTENTION_STATUSES
         for a in agents

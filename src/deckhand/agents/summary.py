@@ -16,11 +16,7 @@ _STATUS_EMOJI = {
 
 
 def _cursor_agents(orchestrator: Orchestrator) -> list[dict[str, object]]:
-    return [
-        a.as_dict()
-        for a in orchestrator.list_agents()
-        if a.type in _CURSOR_TYPES
-    ]
+    return [a.as_dict() for a in orchestrator.list_agents() if a.type in _CURSOR_TYPES]
 
 
 def build_cursor_summary_value(agents: list[dict[str, object]]) -> dict[str, object]:

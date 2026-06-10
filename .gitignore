@@ -6,3 +6,4 @@ __pycache__/
 config.toml
 opendeck-plugin/com.deckhand.plugin.sdPlugin/deckhand.env
 .DS_Store
+.deckhand/

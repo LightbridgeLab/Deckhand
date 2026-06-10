@@ -63,7 +63,9 @@ async def test_hook_status_transitions(client: AsyncClient) -> None:
 
     assert await push("sessionStart") == "idle"
     assert await push("beforeSubmitPrompt") == "running"
-    assert await push("preToolUse", deckhand_status="awaiting_input") == "awaiting_input"
+    assert (
+        await push("preToolUse", deckhand_status="awaiting_input") == "awaiting_input"
+    )
     assert await push("stop") == "idle"
 
 

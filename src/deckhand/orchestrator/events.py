@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+import logging
 import time
-from typing import Any
+from typing import Any, Awaitable, Callable
 
 from fastapi import WebSocket
 
 from deckhand.metrics import Metrics
 from deckhand.orchestrator.schemas import EventEnvelope, EventSource
+
+logger = logging.getLogger(__name__)
+
+EventListener = Callable[[dict[str, Any]], Awaitable[None]]
 
 
 def build_event(
@@ -88,6 +93,7 @@ class EventBus:
 
     def __init__(self, metrics: Metrics | None = None) -> None:
         self._subscribers: set[WebSocket] = set()
+        self._listeners: list[EventListener] = []
         self._metrics = metrics
 
     @property
@@ -101,6 +107,16 @@ class EventBus:
 
     def unsubscribe(self, websocket: WebSocket) -> None:
         self._subscribers.discard(websocket)
+
+    def add_listener(self, listener: EventListener) -> None:
+        """Register an in-process async listener. Called for every emitted event."""
+        self._listeners.append(listener)
+
+    def remove_listener(self, listener: EventListener) -> None:
+        try:
+            self._listeners.remove(listener)
+        except ValueError:
+            pass
 
     async def emit(self, event: dict[str, Any]) -> None:
         """
@@ -137,3 +153,9 @@ class EventBus:
                 dead.append(websocket)
         for websocket in dead:
             self._subscribers.discard(websocket)
+
+        for listener in self._listeners:
+            try:
+                await listener(event)
+            except Exception as exc:
+                logger.warning("Event listener raised: %s", exc, exc_info=True)

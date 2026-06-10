@@ -1,1 +1,0 @@
-"""Development console static assets."""

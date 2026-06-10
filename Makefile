@@ -1,4 +1,4 @@
-.PHONY: help install dev test lint format check clean abandon merge deploy-preview deploy-prod version bump-patch bump-minor bump-major set-version
+.PHONY: help install dev cli test lint format check clean abandon merge deploy-preview deploy-prod version bump-patch bump-minor bump-major set-version
 .DEFAULT_GOAL := help
 
 BRANCH_PROD := main
@@ -17,8 +17,8 @@ install: ## Install all dependencies via uv
 dev: ## Start dev server with hot reload
 	uv run python -m uvicorn deckhand.main:app --app-dir src --reload --host 127.0.0.1 --port 8000
 
-dev-console: ## Print dev console URL (requires make dev)
-	@echo "Dev console: http://127.0.0.1:8000/dev/"
+cli: ## Run the deckhand CLI (pass ARGS="..." for arguments)
+	uv run --extra test python -m deckhand $(ARGS)
 
 test: ## Run test suite
 	uv run --extra test pytest tests/ -v --asyncio-mode=auto

@@ -68,7 +68,7 @@ Use **Agent Slot** with `slot_index` 1–4 and `agent_filter`: `cursor`. No sepa
 2. Set `DECKHAND_URL` and `DECKHAND_API_KEY` in your shell profile.
 3. Restart Cursor. Sessions appear as `cursor-{session_id[:8]}` agents.
 
-Test without hardware: [dev console](http://127.0.0.1:8000/dev/) → **Cursor hook simulator**.
+Test without hardware: `cat hook.json | deckhand hooks simulate cursor`.
 
 ## v1.1 (experimental)
 

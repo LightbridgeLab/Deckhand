@@ -12,8 +12,6 @@ from deckhand.security import ApiKeyEntry, generate_api_key
 
 logger = logging.getLogger(__name__)
 
-_LOCALHOST_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
-
 
 def _parse_bool(value: str | bool) -> bool:
     if isinstance(value, bool):
@@ -71,7 +69,8 @@ class Settings:
         self.rate_limit_rpm: int = 60
         self.log_level: str = "INFO"
         self.log_format: str = "plain"  # "plain" or "json"
-        self._dev_console_explicit: bool | None = None
+        self.event_log_enabled: bool = False
+        self.event_log_path: str = ".deckhand/events.log"
 
         # Auth: list of {key, scope} dicts
         self._raw_api_keys: list[dict[str, str]] = []
@@ -99,11 +98,6 @@ class Settings:
             ApiKeyEntry(key=k["key"], scope=k.get("scope", "write"))
             for k in self._raw_api_keys
         ]
-
-        if self._dev_console_explicit is not None:
-            self.dev_console_enabled = self._dev_console_explicit
-        else:
-            self.dev_console_enabled = self.host in _LOCALHOST_HOSTS
 
     @property
     def plugin_modules(self) -> list[str]:
@@ -154,10 +148,12 @@ class Settings:
             self.log_level = log_config.get("level", self.log_level)
             self.log_format = log_config.get("format", self.log_format)
 
-        if "dev" in config:
-            dev_config = config["dev"]
-            if "enabled" in dev_config:
-                self._dev_console_explicit = _parse_bool(dev_config["enabled"])
+        if "event_log" in config:
+            el_config = config["event_log"]
+            if "enabled" in el_config:
+                self.event_log_enabled = _parse_bool(el_config["enabled"])
+            if "path" in el_config:
+                self.event_log_path = str(el_config["path"])
 
     def _load_auth(self, auth_config: dict[str, Any]) -> None:
         """Parse the [auth] section."""
@@ -208,5 +204,8 @@ class Settings:
         if log_format := os.getenv("DECKHAND_LOG_FORMAT"):
             self.log_format = log_format
 
-        if dev_console := os.getenv("DECKHAND_DEV_CONSOLE"):
-            self._dev_console_explicit = _parse_bool(dev_console)
+        if event_log_enabled := os.getenv("DECKHAND_EVENT_LOG_ENABLED"):
+            self.event_log_enabled = _parse_bool(event_log_enabled)
+
+        if event_log_path := os.getenv("DECKHAND_EVENT_LOG"):
+            self.event_log_path = event_log_path

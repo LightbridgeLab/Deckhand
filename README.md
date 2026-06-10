@@ -86,29 +86,47 @@ make check
 
 All Core tests should pass (currently 81+).
 
-## Dev console
+## CLI
 
-With `make dev` running, open **[http://127.0.0.1:8000/dev/](http://127.0.0.1:8000/dev/)** for a browser-based control panel. It uses the same HTTP and WebSocket APIs as the OpenDeck plugin, so you can validate agents, state, actions, and signals before touching Stream Deck hardware.
+With `make dev` running in another terminal, use the `deckhand` CLI to inspect and drive the service:
 
-1. Paste your API key (same value as `.env` / `config.toml` / the startup log).
-2. Use **Agents** to start, cancel, and send input to `mock-1` / `mock-2`.
-3. Use **Virtual buttons** to simulate all six OpenDeck actions (Agent Status, Agent Slot, Data Widget, Signal Trigger, Run Action, Agent Dashboard). Click the tile face to press; expand **Settings** to pick an action type and configure fields.
-4. Watch the **Event log** for live `agent.status_changed` and `state.changed` events.
-5. See **[Dev console parity checklist](docs/DEV_CONSOLE_PARITY.md)** and [`docs/opendeck-action-settings.json`](docs/opendeck-action-settings.json) for settings schema alignment with Property Inspectors.
-6. Use **Claude Code hook simulator** to paste or preset hook JSON and register or transition `claude-code-*` agents without a live Claude session.
-7. Use **Cursor hook simulator** for `cursor-*` agents and `cursor.summary` state.
+```bash
+uv run deckhand --help
 
-The dev console is enabled by default when the service binds to localhost (`127.0.0.1`). Disable it with `DECKHAND_DEV_CONSOLE=0` or `[dev] enabled = false` in `config.toml`.
+# State
+uv run deckhand state list
+uv run deckhand state get camera.front_door.motion
+uv run deckhand state watch                        # live state.changed stream
+
+# Events (live WebSocket or on-disk JSONL log)
+uv run deckhand events tail
+uv run deckhand events tail --type agent.status_changed --type state.changed
+uv run deckhand events tail --from-log             # replay from .deckhand/events.log
+
+# Actions / signals
+uv run deckhand actions list
+uv run deckhand actions call agent.start --payload '{"agent_id": "mock-1"}'
+uv run deckhand signals list
+uv run deckhand signals fire camera.motion --payload '{"key": "camera.front_door.motion", "active": true, "ttl_seconds": 30}'
+
+# Agents
+uv run deckhand agents list
+uv run deckhand agents start mock-1
+uv run deckhand agents input mock-1 "hello"
+
+# Simulate Claude Code / Cursor hooks without a live session
+cat examples/claude_code_hooks.json | jq '.hooks.SessionStart[0]' | uv run deckhand hooks simulate claude-code
+```
+
+The CLI reads `DECKHAND_URL` and `DECKHAND_API_KEY` from the environment, then falls back to `config.toml`, and finally to `http://127.0.0.1:8000`. Override with `--url` / `--api-key`.
+
+**Event log:** turn on `[event_log] enabled = true` in `config.toml` (or set `DECKHAND_EVENT_LOG_ENABLED=1`) to append every event as JSONL to `.deckhand/events.log`. Off by default. `deckhand events tail --from-log` reads it.
 
 **Cursor Stream Deck layouts:** see [docs/CURSOR_STREAM_DECK_PROFILES.md](docs/CURSOR_STREAM_DECK_PROFILES.md).
 
-```bash
-make dev-console   # print the dev console URL
-```
-
 ## Connect to a Stream Deck
 
-Once you're comfortable with the API and dev console, add hardware via OpenDeck:
+Once you're comfortable with the API and CLI, add hardware via OpenDeck:
 
 **1. Install [OpenDeck](https://github.com/niclasmattsson/OpenDeck)** for your platform.
 
@@ -158,7 +176,7 @@ Copy `config.example.toml` to `config.toml`, or use environment variables:
 | Plugin modules | `DECKHAND_PLUGINS` | `deckhand.plugins.builtin` |
 | State persistence file | `DECKHAND_STATE_FILE` | none (in-memory) |
 | API key | `DECKHAND_API_KEY` | auto-generated write key (logged at startup) |
-| Dev console | `DECKHAND_DEV_CONSOLE` | on when host is localhost |
+| Event log | `DECKHAND_EVENT_LOG_ENABLED` / `DECKHAND_EVENT_LOG` | off; path defaults to `.deckhand/events.log` |
 | Config file path | `DECKHAND_CONFIG_FILE` | `./config.toml` if present |
 
 The OpenDeck plugin reads `DECKHAND_URL` (default `http://localhost:8000`) and `DECKHAND_API_KEY` from `deckhand.env` (loaded by `run.sh`).

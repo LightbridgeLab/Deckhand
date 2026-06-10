@@ -9,14 +9,9 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = REPO_ROOT / "docs" / "opendeck-action-settings.json"
-DEV_SCHEMA_PATH = REPO_ROOT / "src" / "deckhand" / "dev" / "static" / "action-settings.json"
-PI_DIR = REPO_ROOT / "opendeck-plugin" / "com.deckhand.plugin.sdPlugin" / "propertyInspector"
-
-
-def test_dev_schema_matches_docs() -> None:
-    docs = json.loads(SCHEMA_PATH.read_text())
-    dev = json.loads(DEV_SCHEMA_PATH.read_text())
-    assert docs == dev
+PI_DIR = (
+    REPO_ROOT / "opendeck-plugin" / "com.deckhand.plugin.sdPlugin" / "propertyInspector"
+)
 
 
 def test_schema_has_all_actions() -> None:

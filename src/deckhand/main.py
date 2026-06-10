@@ -17,17 +17,16 @@ from fastapi import (
 )
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from pathlib import Path
 
-from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import JSONResponse, RedirectResponse
+from starlette.responses import JSONResponse
 
 from deckhand.agents.claude_code import ClaudeCodeAgent
 from deckhand.agents.cursor import CursorAgent
 from deckhand.agents.mock import MockAgent
 from deckhand.agents.summary import update_cursor_summary
 from deckhand.config.settings import Settings
+from deckhand.event_log import EventLogger
 from deckhand.logging_config import configure_logging
 from deckhand.metrics import Metrics
 from deckhand.orchestrator.actions import ActionRegistry
@@ -57,28 +56,6 @@ metrics: Metrics | None = None
 _service_start_time: float | None = None
 
 SERVICE_VERSION = "0.3.0"
-
-_DEV_STATIC_DIR = Path(__file__).resolve().parent / "dev" / "static"
-
-
-def _mount_dev_console(app: FastAPI) -> None:
-    """Serve the local dev console at /dev/ when enabled in settings."""
-    if getattr(app.state, "dev_console_mounted", False):
-        return
-    if not _DEV_STATIC_DIR.is_dir():
-        logger.error("Dev console static directory missing: %s", _DEV_STATIC_DIR)
-        return
-
-    @app.get("/dev", include_in_schema=False)
-    async def _dev_redirect() -> RedirectResponse:
-        return RedirectResponse(url="/dev/")
-
-    app.mount(
-        "/dev",
-        StaticFiles(directory=str(_DEV_STATIC_DIR), html=True),
-        name="dev-console",
-    )
-    app.state.dev_console_mounted = True
 
 
 @asynccontextmanager
@@ -110,7 +87,9 @@ async def lifespan(app: FastAPI):
     logger.info(f"  State file: {settings.state_file_path or 'none (in-memory only)'}")
     logger.info(f"  API keys: {len(settings.api_keys)} configured")
     logger.info(f"  Rate limit: {settings.rate_limit_rpm} req/min")
-    logger.info(f"  Dev console: {'enabled' if settings.dev_console_enabled else 'disabled'}")
+    logger.info(
+        f"  Event log: {'enabled @ ' + settings.event_log_path if settings.event_log_enabled else 'disabled'}"
+    )
     logger.info(f"  Plugins: {', '.join(settings.plugin_modules)}")
 
     if settings._generated_key:
@@ -158,13 +137,10 @@ async def lifespan(app: FastAPI):
         f"Loaded {len(action_registry.list_actions())} actions and {len(signal_registry.list_signals())} signals"
     )
 
-    if settings.dev_console_enabled:
-        _mount_dev_console(app)
-        logger.info(
-            "Dev console available at http://%s:%s/dev/",
-            settings.host,
-            settings.port,
-        )
+    if settings.event_log_enabled:
+        event_logger = EventLogger(settings.event_log_path)
+        orchestrator.event_bus.add_listener(event_logger)
+        logger.info("Event log writing to %s", event_logger.path)
 
     logger.info("Deckhand service started")
 

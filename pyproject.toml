@@ -9,18 +9,19 @@ dependencies = [
   "uvicorn[standard]",
   "websockets",
   "aiohttp",
+  "httpx",
+  "typer",
 ]
 
 [project.optional-dependencies]
 test = [
   "pytest",
   "pytest-asyncio",
-  "httpx",
 ]
+
+[project.scripts]
+deckhand = "deckhand.cli.main:app"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
-
-[tool.hatch.build.targets.wheel.force-include]
-"src/deckhand/dev/static" = "deckhand/dev/static"
