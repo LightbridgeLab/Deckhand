@@ -12,8 +12,26 @@ port = 8000
 # List of plugin module paths to load
 modules = [
   "deckhand.plugins.builtin",
+  # "deckhand.plugins.claude_code_usage",
   # "my_custom_plugin",
 ]
+
+# Per-plugin configuration: read by the plugin's own register() function.
+#
+# [plugins.claude_code_usage]
+# Polls Claude Code session logs (~/.claude/projects/**/*.jsonl) and writes
+# three state keys for Data Widget buttons: usage.claude_code.session_tokens,
+# .week_tokens, .week_sonnet_tokens. Each entry has shape:
+#   { label, current, max, percent, unit, updated_at }
+# `max` and `percent` are null unless you configure the *_token_cap below —
+# Anthropic's per-session/weekly caps are not exposed on disk.
+#
+# poll_interval_seconds = 30
+# session_window_hours  = 5
+# data_dir              = "~/.claude"
+# session_token_cap     = 500000
+# week_token_cap        = 10000000
+# week_sonnet_token_cap = 5000000
 
 [paths]
 # Path to JSON file for persisting state across restarts (optional)
