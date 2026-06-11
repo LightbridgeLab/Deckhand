@@ -18,6 +18,8 @@ class OrchestratorActions(Protocol):
 
     def get_agent(self, agent_id: str) -> Any: ...
 
+    async def focus_next_pending(self) -> str | None: ...
+
 
 ActionHandler = Callable[[dict[str, object]], Awaitable[None]]
 
@@ -110,6 +112,9 @@ class ActionRegistry:
                 )
             )
 
+        async def focus_next_pending(payload: dict[str, object]) -> None:
+            await self._orchestrator.focus_next_pending()
+
         async def focus_cursor_agent(payload: dict[str, object]) -> None:
             agent_id = payload.get("agent_id")
             if not agent_id:
@@ -173,4 +178,13 @@ class ActionRegistry:
             focus_cursor_agent,
             description="Focus Cursor on an agent's project (macOS opens Cursor locally)",
             payload_schema={"agent_id": {"type": "string", "required": True}},
+        )
+        self.register(
+            "agents.focus_next_pending",
+            focus_next_pending,
+            description=(
+                "Focus the oldest agent currently awaiting input; no-op if the "
+                "pending list is empty or no focuser is registered."
+            ),
+            payload_schema={},
         )

@@ -24,9 +24,11 @@ from starlette.responses import JSONResponse
 from deckhand.agents.claude_code import ClaudeCodeAgent
 from deckhand.agents.cursor import CursorAgent
 from deckhand.agents.mock import MockAgent
+from deckhand.agents.pending_input import PendingInputTracker
 from deckhand.agents.summary import update_cursor_summary
 from deckhand.config.settings import Settings
 from deckhand.event_log import EventLogger
+from deckhand.focusers.iterm import make_iterm_focuser
 from deckhand.logging_config import configure_logging
 from deckhand.metrics import Metrics
 from deckhand.orchestrator.actions import ActionRegistry
@@ -141,6 +143,11 @@ async def lifespan(app: FastAPI):
         event_logger = EventLogger(settings.event_log_path)
         orchestrator.event_bus.add_listener(event_logger)
         logger.info("Event log writing to %s", event_logger.path)
+
+    # Pending-input aggregator: maintains agents.pending_input{,_count}
+    # state from agent.status_changed / agent.unregistered events.
+    pending_tracker = PendingInputTracker(orchestrator.state_store)
+    orchestrator.event_bus.add_listener(pending_tracker)
 
     logger.info("Deckhand service started")
 
@@ -285,6 +292,7 @@ class ClaudeCodeHookPayload(BaseModel):
     hook_event_name: str
     cwd: str | None = None
     transcript_path: str | None = None
+    iterm_session_id: str | None = None
 
 
 class CursorHookPayload(BaseModel):
@@ -522,6 +530,10 @@ async def claude_code_hook(payload: ClaudeCodeHookPayload) -> dict[str, object]:
             project_root=payload.cwd,
         )
         orchestrator.register_agent(agent)
+        if payload.iterm_session_id:
+            orchestrator.register_focuser(
+                agent_id, make_iterm_focuser(payload.iterm_session_id)
+            )
         await orchestrator.event_bus.emit(
             build_event(
                 "agent.registered",
@@ -533,6 +545,14 @@ async def claude_code_hook(payload: ClaudeCodeHookPayload) -> dict[str, object]:
         agent = existing  # type: ignore[assignment]
         if payload.cwd and agent.project_root != payload.cwd:
             agent.project_root = payload.cwd
+        # Always (re)bind the focuser when iterm_session_id is present, so
+        # late-arriving hook upgrades AND changes to the iTerm session id
+        # (e.g. the user detached and reattached a session to a new tab)
+        # take effect immediately. Building the closure is microsecond-cheap.
+        if payload.iterm_session_id:
+            orchestrator.register_focuser(
+                agent_id, make_iterm_focuser(payload.iterm_session_id)
+            )
 
     if not isinstance(agent, ClaudeCodeAgent):
         raise HTTPException(

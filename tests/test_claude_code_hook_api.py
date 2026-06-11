@@ -124,6 +124,215 @@ async def test_hook_distinct_sessions_yield_distinct_agents(
     assert "/tmp/beta" in roots
 
 
+async def test_hook_registers_iterm_focuser_when_session_id_present(
+    client: AsyncClient,
+) -> None:
+    """SessionStart with iterm_session_id binds a focuser on the orchestrator."""
+    import deckhand.main as main_mod
+
+    await client.post(
+        "/agents/claude-code/hook",
+        json={
+            "session_id": "feedface00000000",
+            "hook_event_name": "SessionStart",
+            "cwd": "/tmp/p",
+            "iterm_session_id": "iterm-uuid-xyz",
+        },
+    )
+    assert main_mod.orchestrator is not None
+    assert "claude-code-feedface" in main_mod.orchestrator.focusers
+
+
+async def test_hook_skips_focuser_when_iterm_session_id_absent(
+    client: AsyncClient,
+) -> None:
+    """Without iterm_session_id (e.g. Terminal.app), the agent is unfocusable."""
+    import deckhand.main as main_mod
+
+    await client.post(
+        "/agents/claude-code/hook",
+        json={
+            "session_id": "feedbeef00000000",
+            "hook_event_name": "SessionStart",
+            "cwd": "/tmp/p",
+        },
+    )
+    assert main_mod.orchestrator is not None
+    assert "claude-code-feedbeef" not in main_mod.orchestrator.focusers
+
+
+async def test_hook_late_registers_focuser_on_subsequent_event(
+    client: AsyncClient,
+) -> None:
+    """User upgrades their hook script mid-session; focuser binds late."""
+    import deckhand.main as main_mod
+
+    session_id = "1234deadbeef0000"
+    await client.post(
+        "/agents/claude-code/hook",
+        json={
+            "session_id": session_id,
+            "hook_event_name": "SessionStart",
+            "cwd": "/tmp/p",
+        },
+    )
+    assert "claude-code-1234dead" not in main_mod.orchestrator.focusers
+
+    await client.post(
+        "/agents/claude-code/hook",
+        json={
+            "session_id": session_id,
+            "hook_event_name": "UserPromptSubmit",
+            "cwd": "/tmp/p",
+            "iterm_session_id": "iterm-uuid-late",
+        },
+    )
+    assert "claude-code-1234dead" in main_mod.orchestrator.focusers
+
+
+async def test_hook_replaces_focuser_when_iterm_session_id_changes(
+    client: AsyncClient,
+) -> None:
+    """If the session reattaches to a new iTerm tab mid-session, rebind the focuser."""
+    import deckhand.main as main_mod
+
+    captured: list[str] = []
+
+    def fake_make_focuser(session_id: str):
+        captured.append(session_id)
+
+        async def f() -> None: ...
+
+        return f
+
+    main_mod.make_iterm_focuser = fake_make_focuser  # type: ignore[assignment]
+    try:
+        session_id = "abcabc00abcabc00"
+        await client.post(
+            "/agents/claude-code/hook",
+            json={
+                "session_id": session_id,
+                "hook_event_name": "SessionStart",
+                "cwd": "/tmp/p",
+                "iterm_session_id": "iterm-OLD",
+            },
+        )
+        await client.post(
+            "/agents/claude-code/hook",
+            json={
+                "session_id": session_id,
+                "hook_event_name": "UserPromptSubmit",
+                "cwd": "/tmp/p",
+                "iterm_session_id": "iterm-NEW",
+            },
+        )
+        # SessionStart bound OLD, UserPromptSubmit bound NEW (replace, not skip).
+        assert captured == ["iterm-OLD", "iterm-NEW"]
+    finally:
+        from deckhand.focusers import iterm as iterm_mod
+
+        main_mod.make_iterm_focuser = iterm_mod.make_iterm_focuser  # type: ignore[assignment]
+
+
+async def test_hook_session_end_drops_focuser(client: AsyncClient) -> None:
+    import deckhand.main as main_mod
+
+    session_id = "f00dface00000000"
+    await client.post(
+        "/agents/claude-code/hook",
+        json={
+            "session_id": session_id,
+            "hook_event_name": "SessionStart",
+            "cwd": "/tmp/p",
+            "iterm_session_id": "iterm-uuid-bye",
+        },
+    )
+    assert "claude-code-f00dface" in main_mod.orchestrator.focusers
+
+    await client.post(
+        "/agents/claude-code/hook",
+        json={"session_id": session_id, "hook_event_name": "SessionEnd"},
+    )
+    assert "claude-code-f00dface" not in main_mod.orchestrator.focusers
+
+
+async def test_focus_next_pending_action_against_live_orchestrator(
+    client: AsyncClient,
+) -> None:
+    """Full integration: two awaiting agents → first press focuses head."""
+    import deckhand.main as main_mod
+    from deckhand.focusers import iterm as iterm_mod
+
+    calls: list[str] = []
+
+    def fake_make_focuser(session_id: str):
+        async def f() -> None:
+            calls.append(session_id)
+
+        return f
+
+    # Patch where the symbol is imported, not its source module.
+    main_mod.make_iterm_focuser = fake_make_focuser  # type: ignore[assignment]
+    try:
+        for letter, iterm_id in [("a", "iterm-A"), ("b", "iterm-B")]:
+            await client.post(
+                "/agents/claude-code/hook",
+                json={
+                    "session_id": f"{letter}" * 16,
+                    "hook_event_name": "SessionStart",
+                    "cwd": f"/tmp/{letter}",
+                    "iterm_session_id": iterm_id,
+                },
+            )
+            await client.post(
+                "/agents/claude-code/hook",
+                json={
+                    "session_id": f"{letter}" * 16,
+                    "hook_event_name": "Notification",
+                    "cwd": f"/tmp/{letter}",
+                    "iterm_session_id": iterm_id,
+                },
+            )
+
+        # State should reflect both pending; press the action and 'A' focuses.
+        resp = await client.post("/actions/agents.focus_next_pending", json={})
+        assert resp.status_code == 200
+        assert calls == ["iterm-A"]
+
+        # Agent A resolves; next press should focus B.
+        await client.post(
+            "/agents/claude-code/hook",
+            json={
+                "session_id": "a" * 16,
+                "hook_event_name": "Stop",
+                "cwd": "/tmp/a",
+                "iterm_session_id": "iterm-A",
+            },
+        )
+        resp = await client.post("/actions/agents.focus_next_pending", json={})
+        assert resp.status_code == 200
+        assert calls == ["iterm-A", "iterm-B"]
+
+        # Empty queue: still success (action is no-op) AND no focuser fires.
+        await client.post(
+            "/agents/claude-code/hook",
+            json={
+                "session_id": "b" * 16,
+                "hook_event_name": "Stop",
+                "cwd": "/tmp/b",
+                "iterm_session_id": "iterm-B",
+            },
+        )
+        resp = await client.post("/actions/agents.focus_next_pending", json={})
+        assert resp.status_code == 200
+        # Guard against a regression that fires a stale focuser: calls
+        # must NOT have grown beyond the two real presses above.
+        assert calls == ["iterm-A", "iterm-B"]
+    finally:
+        # Restore so other tests in the module pick up the real symbol.
+        main_mod.make_iterm_focuser = iterm_mod.make_iterm_focuser  # type: ignore[assignment]
+
+
 async def test_hook_requires_auth() -> None:
     import importlib
     import deckhand.main as main_mod
