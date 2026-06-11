@@ -1,7 +1,15 @@
 # Deckhand Configuration File Example
 #
 # Copy this file to config.toml and customize as needed.
-# Or set DECKHAND_CONFIG_FILE environment variable to point to your config file.
+#
+# Config file discovery order (first hit wins):
+#   1. DECKHAND_CONFIG_FILE env var
+#   2. ./config.toml
+#   3. ~/.config/deckhand/config.toml
+#
+# Tip: if you only run the OpenDeck plugin (no service checkout), put this
+# file at ~/.config/deckhand/config.toml — the plugin reads the [client]
+# section from the same file.
 
 [service]
 name = "deckhand"
@@ -46,6 +54,16 @@ modules = [
 #   { key = "your-write-key-here", scope = "write" },
 #   { key = "your-read-key-here", scope = "read" },
 # ]
+
+[client]
+# Values clients (the OpenDeck plugin, the `deckhand` CLI, anything else
+# that connects to a running Deckhand service) read from this file. The
+# service itself ignores this section — its own accepted keys come from
+# [auth].api_keys above. Putting both in one file means there's no second
+# config surface to keep in sync.
+#
+# url = "http://127.0.0.1:8000"
+# api_key = "your-write-key-here"   # same value as one of [auth].api_keys
 
 [rate_limit]
 # Maximum requests per minute per client IP (default: 60)

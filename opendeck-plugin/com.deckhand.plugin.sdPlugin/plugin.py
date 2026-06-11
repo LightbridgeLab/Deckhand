@@ -10,8 +10,7 @@ import argparse
 import asyncio
 import json
 import logging
-import os
-import sys
+from pathlib import Path
 from typing import Any
 
 import websockets
@@ -24,6 +23,7 @@ from actions.agent_status import AgentStatusHandler
 from actions.signal_trigger import SignalTriggerHandler
 from actions.widget import WidgetHandler
 from bridge import DeckhandBridge
+from client_config import resolve_connection
 from diagnostics import PluginDiagnostics
 
 logging.basicConfig(
@@ -49,12 +49,19 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Deckhand OpenDeck Plugin")
     parser.add_argument("-port", type=int, required=True, help="WebSocket port")
     parser.add_argument("-pluginUUID", type=str, required=True, help="Plugin UUID")
-    parser.add_argument("-registerEvent", type=str, required=True, help="Registration event name")
+    parser.add_argument(
+        "-registerEvent", type=str, required=True, help="Registration event name"
+    )
     parser.add_argument("-info", type=str, required=True, help="JSON info string")
     return parser.parse_args()
 
 
-async def send_to_opendeck(ws: websockets.asyncio.client.ClientConnection, event: str, context: str, payload: dict[str, Any] | None = None) -> None:
+async def send_to_opendeck(
+    ws: websockets.asyncio.client.ClientConnection,
+    event: str,
+    context: str,
+    payload: dict[str, Any] | None = None,
+) -> None:
     """Send an event to OpenDeck."""
     msg: dict[str, Any] = {"event": event, "context": context}
     if payload is not None:
@@ -63,7 +70,11 @@ async def send_to_opendeck(ws: websockets.asyncio.client.ClientConnection, event
     diag.record_sent()
 
 
-async def handle_opendeck_event(ws: websockets.asyncio.client.ClientConnection, data: dict[str, Any], bridge: DeckhandBridge) -> None:
+async def handle_opendeck_event(
+    ws: websockets.asyncio.client.ClientConnection,
+    data: dict[str, Any],
+    bridge: DeckhandBridge,
+) -> None:
     """Dispatch an incoming OpenDeck event to the appropriate handler."""
     diag.record_opendeck_event()
 
@@ -106,11 +117,15 @@ async def handle_opendeck_event(ws: websockets.asyncio.client.ClientConnection, 
             # Handle diagnostics request from any PI
             if payload.get("type") == "getDiagnostics":
                 diag.deckhand_connected = bridge.connected
-                await ws.send(json.dumps({
-                    "event": "sendToPropertyInspector",
-                    "context": context,
-                    "payload": {"type": "diagnostics", "data": diag.as_dict()},
-                }))
+                await ws.send(
+                    json.dumps(
+                        {
+                            "event": "sendToPropertyInspector",
+                            "context": context,
+                            "payload": {"type": "diagnostics", "data": diag.as_dict()},
+                        }
+                    )
+                )
                 return
 
             handler = ACTION_HANDLERS.get(action)
@@ -122,7 +137,9 @@ async def handle_opendeck_event(ws: websockets.asyncio.client.ClientConnection, 
         logger.exception("Error handling OpenDeck event %s", event)
 
 
-async def handle_deckhand_event(ws: websockets.asyncio.client.ClientConnection, event: dict[str, Any]) -> None:
+async def handle_deckhand_event(
+    ws: websockets.asyncio.client.ClientConnection, event: dict[str, Any]
+) -> None:
     """Forward a Deckhand Core event to all relevant OpenDeck contexts."""
     diag.record_deckhand_event()
     event_type = event.get("type", "")
@@ -135,11 +152,14 @@ async def handle_deckhand_event(ws: websockets.asyncio.client.ClientConnection, 
             logger.exception("Error forwarding Deckhand event %s", event_type)
 
 
-async def deckhand_listener(ws: websockets.asyncio.client.ClientConnection, bridge: DeckhandBridge) -> None:
+async def deckhand_listener(
+    ws: websockets.asyncio.client.ClientConnection, bridge: DeckhandBridge
+) -> None:
     """Subscribe to Deckhand Core events and forward them.
 
     Reconnection is handled inside bridge.subscribe_events with exponential backoff.
     """
+
     async def on_event(event: dict[str, Any]) -> None:
         diag.deckhand_connected = True
         await handle_deckhand_event(ws, event)
@@ -150,12 +170,14 @@ async def deckhand_listener(ws: websockets.asyncio.client.ClientConnection, brid
 async def main() -> None:
     args = parse_args()
 
-    # Deckhand Core URL and auth: env var > default
-    core_url = os.getenv("DECKHAND_URL", "http://localhost:8000")
-    api_key = os.getenv("DECKHAND_API_KEY")
+    # Resolve connection settings: env var → [client] in shared config.toml
+    # → legacy deckhand.env (deprecated). See client_config.py for details.
+    core_url, api_key = resolve_connection(Path(__file__).parent)
     bridge = DeckhandBridge(base_url=core_url, api_key=api_key)
     info = json.loads(args.info) if args.info else {}
-    logger.info("Starting Deckhand plugin (port=%d, uuid=%s)", args.port, args.pluginUUID)
+    logger.info(
+        "Starting Deckhand plugin (port=%d, uuid=%s)", args.port, args.pluginUUID
+    )
     logger.info("Deckhand Core URL: %s", core_url)
     logger.info("OpenDeck info: %s", json.dumps(info, indent=2))
 
@@ -170,10 +192,12 @@ async def main() -> None:
     uri = f"ws://127.0.0.1:{args.port}"
     async with websockets.asyncio.client.connect(uri) as ws:
         # Register with OpenDeck
-        registration = json.dumps({
-            "event": args.registerEvent,
-            "uuid": args.pluginUUID,
-        })
+        registration = json.dumps(
+            {
+                "event": args.registerEvent,
+                "uuid": args.pluginUUID,
+            }
+        )
         await ws.send(registration)
         logger.info("Registered with OpenDeck")
 

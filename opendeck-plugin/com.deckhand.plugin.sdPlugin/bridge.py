@@ -12,17 +12,21 @@ import aiohttp
 logger = logging.getLogger("deckhand-bridge")
 
 # Reconnection parameters
-_RECONNECT_BASE_DELAY = 1.0   # seconds
-_RECONNECT_MAX_DELAY = 30.0   # seconds
-_RECONNECT_BACKOFF = 2.0      # multiplier
+_RECONNECT_BASE_DELAY = 1.0  # seconds
+_RECONNECT_MAX_DELAY = 30.0  # seconds
+_RECONNECT_BACKOFF = 2.0  # multiplier
 
 
 class DeckhandBridge:
     """Talks to Deckhand Core over HTTP (actions/state) and WebSocket (events)."""
 
-    def __init__(self, base_url: str = "http://localhost:8000", api_key: str | None = None) -> None:
+    def __init__(
+        self, base_url: str = "http://localhost:8000", api_key: str | None = None
+    ) -> None:
         self.base_url = base_url.rstrip("/")
-        ws_base = self.base_url.replace("http://", "ws://").replace("https://", "wss://")
+        ws_base = self.base_url.replace("http://", "ws://").replace(
+            "https://", "wss://"
+        )
         # WebSocket URL no longer carries the token as a query param;
         # authentication happens via a first-message handshake instead.
         self.ws_url = f"{ws_base}/events"
@@ -86,9 +90,7 @@ class DeckhandBridge:
             body["project_root"] = project_root
         if active_file is not None:
             body["active_file"] = active_file
-        async with session.post(
-            f"{self.base_url}/agents/register", json=body
-        ) as resp:
+        async with session.post(f"{self.base_url}/agents/register", json=body) as resp:
             resp.raise_for_status()
             return await resp.json()
 
@@ -112,7 +114,9 @@ class DeckhandBridge:
 
     # ----- HTTP: Actions -----
 
-    async def execute_action(self, action_name: str, payload: dict[str, Any] | None = None) -> None:
+    async def execute_action(
+        self, action_name: str, payload: dict[str, Any] | None = None
+    ) -> None:
         session = await self._get_session()
         async with session.post(
             f"{self.base_url}/actions/{action_name}",
@@ -122,7 +126,9 @@ class DeckhandBridge:
 
     # ----- HTTP: Signals -----
 
-    async def send_signal(self, signal_name: str, payload: dict[str, Any] | None = None) -> None:
+    async def send_signal(
+        self, signal_name: str, payload: dict[str, Any] | None = None
+    ) -> None:
         session = await self._get_session()
         async with session.post(
             f"{self.base_url}/signals/webhook/{signal_name}",
@@ -185,8 +191,13 @@ class DeckhandBridge:
                                 if asyncio.iscoroutine(result):
                                     await result
                             except json.JSONDecodeError:
-                                logger.warning("Invalid JSON from Deckhand Core: %s", msg.data)
-                        elif msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
+                                logger.warning(
+                                    "Invalid JSON from Deckhand Core: %s", msg.data
+                                )
+                        elif msg.type in (
+                            aiohttp.WSMsgType.CLOSED,
+                            aiohttp.WSMsgType.ERROR,
+                        ):
                             break
 
             except asyncio.CancelledError:

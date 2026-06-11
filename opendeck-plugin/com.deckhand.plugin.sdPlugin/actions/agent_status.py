@@ -27,7 +27,7 @@ STATUS_INDEX = {
 }
 
 STATUS_TITLES = {
-    "idle": "",       # Show agent name when idle
+    "idle": "",  # Show agent name when idle
     "running": "Running",
     "awaiting_input": "Input!",
     "error": "Error",
@@ -38,7 +38,7 @@ STATUS_SOUNDS = {
 }
 
 # Auto-retry defaults
-_RETRY_DELAY = 5.0       # seconds before retry
+_RETRY_DELAY = 5.0  # seconds before retry
 _RETRY_MAX_ATTEMPTS = 3
 
 
@@ -52,7 +52,12 @@ class AgentStatusHandler:
         # context → asyncio.Task for pending retry
         self._retry_tasks: dict[str, asyncio.Task[None]] = {}
 
-    async def on_will_appear(self, ws: websockets.asyncio.client.ClientConnection, context: str, settings: dict[str, Any]) -> None:
+    async def on_will_appear(
+        self,
+        ws: websockets.asyncio.client.ClientConnection,
+        context: str,
+        settings: dict[str, Any],
+    ) -> None:
         agent_id = settings.get("agent_id", "")
         sounds_enabled = settings.get("sounds_enabled", True)
         auto_retry = settings.get("auto_retry", False)
@@ -89,7 +94,12 @@ class AgentStatusHandler:
         self._watched.pop(context, None)
         self._cancel_retry(context)
 
-    async def on_key_down(self, ws: websockets.asyncio.client.ClientConnection, context: str, settings: dict[str, Any]) -> None:
+    async def on_key_down(
+        self,
+        ws: websockets.asyncio.client.ClientConnection,
+        context: str,
+        settings: dict[str, Any],
+    ) -> None:
         agent_id = settings.get("agent_id", "")
         if not agent_id:
             return
@@ -118,25 +128,45 @@ class AgentStatusHandler:
         except Exception:
             logger.exception("Key action failed for agent %s", agent_id)
 
-    async def on_did_receive_settings(self, ws: websockets.asyncio.client.ClientConnection, context: str, settings: dict[str, Any]) -> None:
+    async def on_did_receive_settings(
+        self,
+        ws: websockets.asyncio.client.ClientConnection,
+        context: str,
+        settings: dict[str, Any],
+    ) -> None:
         """Settings changed from Property Inspector — re-initialize."""
         self._cancel_retry(context)
         await self.on_will_appear(ws, context, settings)
 
-    async def on_send_to_plugin(self, ws: websockets.asyncio.client.ClientConnection, context: str, payload: dict[str, Any]) -> None:
+    async def on_send_to_plugin(
+        self,
+        ws: websockets.asyncio.client.ClientConnection,
+        context: str,
+        payload: dict[str, Any],
+    ) -> None:
         """Handle Property Inspector requests (e.g., fetch agent list)."""
         request_type = payload.get("type", "")
         if request_type == "getAgents":
             try:
                 agents = await self.bridge.list_agents()
-                await _send_to_property_inspector(ws, context, {
-                    "type": "agentList",
-                    "agents": agents,
-                })
+                await _send_to_property_inspector(
+                    ws,
+                    context,
+                    {
+                        "type": "agentList",
+                        "agents": agents,
+                    },
+                )
             except Exception:
                 logger.exception("Failed to fetch agents for PI")
 
-    async def on_deckhand_event(self, ws: websockets.asyncio.client.ClientConnection, event_type: str, event: dict[str, Any], all_contexts: dict[str, dict[str, Any]]) -> None:
+    async def on_deckhand_event(
+        self,
+        ws: websockets.asyncio.client.ClientConnection,
+        event_type: str,
+        event: dict[str, Any],
+        all_contexts: dict[str, dict[str, Any]],
+    ) -> None:
         """Handle events from Deckhand Core."""
         if event_type not in ("agent.status_changed", "agent.context_changed"):
             return
@@ -177,7 +207,13 @@ class AgentStatusHandler:
 
     # ----- Auto-retry helpers -----
 
-    def _schedule_retry(self, ws: websockets.asyncio.client.ClientConnection, context: str, agent_id: str, info: dict[str, Any]) -> None:
+    def _schedule_retry(
+        self,
+        ws: websockets.asyncio.client.ClientConnection,
+        context: str,
+        agent_id: str,
+        info: dict[str, Any],
+    ) -> None:
         """Schedule an auto-retry for a failed agent."""
         retry_count = info.get("retry_count", 0)
         retry_max = info.get("retry_max", _RETRY_MAX_ATTEMPTS)
@@ -193,7 +229,12 @@ class AgentStatusHandler:
         async def _do_retry() -> None:
             await asyncio.sleep(delay)
             try:
-                logger.info("Auto-retrying agent %s (attempt %d/%d)", agent_id, info["retry_count"], retry_max)
+                logger.info(
+                    "Auto-retrying agent %s (attempt %d/%d)",
+                    agent_id,
+                    info["retry_count"],
+                    retry_max,
+                )
                 await self.bridge.start_agent(agent_id)
                 await _set_title(ws, context, f"Retry {info['retry_count']}")
             except Exception:
@@ -212,25 +253,46 @@ class AgentStatusHandler:
 # OpenDeck helper functions
 # ---------------------------------------------------------------------------
 
-async def _set_title(ws: websockets.asyncio.client.ClientConnection, context: str, title: str) -> None:
-    await ws.send(json.dumps({
-        "event": "setTitle",
-        "context": context,
-        "payload": {"title": title},
-    }))
+
+async def _set_title(
+    ws: websockets.asyncio.client.ClientConnection, context: str, title: str
+) -> None:
+    await ws.send(
+        json.dumps(
+            {
+                "event": "setTitle",
+                "context": context,
+                "payload": {"title": title},
+            }
+        )
+    )
 
 
-async def _set_state(ws: websockets.asyncio.client.ClientConnection, context: str, state: int) -> None:
-    await ws.send(json.dumps({
-        "event": "setState",
-        "context": context,
-        "payload": {"state": state},
-    }))
+async def _set_state(
+    ws: websockets.asyncio.client.ClientConnection, context: str, state: int
+) -> None:
+    await ws.send(
+        json.dumps(
+            {
+                "event": "setState",
+                "context": context,
+                "payload": {"state": state},
+            }
+        )
+    )
 
 
-async def _send_to_property_inspector(ws: websockets.asyncio.client.ClientConnection, context: str, payload: dict[str, Any]) -> None:
-    await ws.send(json.dumps({
-        "event": "sendToPropertyInspector",
-        "context": context,
-        "payload": payload,
-    }))
+async def _send_to_property_inspector(
+    ws: websockets.asyncio.client.ClientConnection,
+    context: str,
+    payload: dict[str, Any],
+) -> None:
+    await ws.send(
+        json.dumps(
+            {
+                "event": "sendToPropertyInspector",
+                "context": context,
+                "payload": payload,
+            }
+        )
+    )

@@ -2,7 +2,7 @@
 .DEFAULT_GOAL := help
 
 BRANCH_PROD := main
-SRC_DIRS    := src/ tests/
+SRC_DIRS    := src/ tests/ opendeck-plugin/
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -22,6 +22,7 @@ cli: ## Run the deckhand CLI (pass ARGS="..." for arguments)
 
 test: ## Run test suite
 	uv run --extra test pytest tests/ -v --asyncio-mode=auto
+	uv run --extra test pytest opendeck-plugin/tests/ -v --asyncio-mode=auto --rootdir=opendeck-plugin
 
 lint: ## Run ruff linter
 	uvx ruff check $(SRC_DIRS)

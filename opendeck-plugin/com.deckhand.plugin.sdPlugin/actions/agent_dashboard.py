@@ -29,7 +29,9 @@ _STATUS_EMOJI = {
 
 
 def _dashboard_title(agents: list[dict[str, Any]], agent_filter: str) -> str:
-    filtered = [a for a in agents if agent_filter in ("", "*") or a.get("type") == agent_filter]
+    filtered = [
+        a for a in agents if agent_filter in ("", "*") or a.get("type") == agent_filter
+    ]
     if not filtered:
         return "No Agents"
 
