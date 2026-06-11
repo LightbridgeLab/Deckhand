@@ -1,5 +1,5 @@
 {
-  "_comment": "Drop the `hooks` block below into ~/.claude/settings.json (merging with any existing hooks) to reflect your Claude Code session state into Deckhand. Each hook reads the JSON payload Claude Code writes to stdin and forwards it to Deckhand's /agents/claude-code/hook endpoint. Replace DECKHAND_URL and DECKHAND_API_KEY with your values (or set them as env vars in your shell profile).",
+  "_comment": "Drop the `hooks` block below into ~/.claude/settings.json (merging with any existing hooks) to reflect your Claude Code session state into Deckhand. Each hook reads the JSON payload Claude Code writes to stdin and forwards it to Deckhand's /agents/claude-code/hook endpoint, adding `iterm_session_id` from the shell's $ITERM_SESSION_ID (iTerm sets that automatically; outside iTerm it's null and the agent is tracked but not focusable). Replace DECKHAND_URL and DECKHAND_API_KEY with your values (or set them as env vars in your shell profile).",
   "_requires": "curl, jq",
   "hooks": {
     "SessionStart": [
@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "jq -c . | curl -sS -X POST \"${DECKHAND_URL:-http://127.0.0.1:8000}/agents/claude-code/hook\" -H \"Authorization: Bearer ${DECKHAND_API_KEY}\" -H 'Content-Type: application/json' --data-binary @- >/dev/null || true"
+            "command": "jq -c '. + {iterm_session_id: env.ITERM_SESSION_ID}' | curl -sS -X POST \"${DECKHAND_URL:-http://127.0.0.1:8000}/agents/claude-code/hook\" -H \"Authorization: Bearer ${DECKHAND_API_KEY}\" -H 'Content-Type: application/json' --data-binary @- >/dev/null || true"
           }
         ]
       }
@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "jq -c . | curl -sS -X POST \"${DECKHAND_URL:-http://127.0.0.1:8000}/agents/claude-code/hook\" -H \"Authorization: Bearer ${DECKHAND_API_KEY}\" -H 'Content-Type: application/json' --data-binary @- >/dev/null || true"
+            "command": "jq -c '. + {iterm_session_id: env.ITERM_SESSION_ID}' | curl -sS -X POST \"${DECKHAND_URL:-http://127.0.0.1:8000}/agents/claude-code/hook\" -H \"Authorization: Bearer ${DECKHAND_API_KEY}\" -H 'Content-Type: application/json' --data-binary @- >/dev/null || true"
           }
         ]
       }
@@ -28,7 +28,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "jq -c . | curl -sS -X POST \"${DECKHAND_URL:-http://127.0.0.1:8000}/agents/claude-code/hook\" -H \"Authorization: Bearer ${DECKHAND_API_KEY}\" -H 'Content-Type: application/json' --data-binary @- >/dev/null || true"
+            "command": "jq -c '. + {iterm_session_id: env.ITERM_SESSION_ID}' | curl -sS -X POST \"${DECKHAND_URL:-http://127.0.0.1:8000}/agents/claude-code/hook\" -H \"Authorization: Bearer ${DECKHAND_API_KEY}\" -H 'Content-Type: application/json' --data-binary @- >/dev/null || true"
           }
         ]
       }
@@ -38,7 +38,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "jq -c . | curl -sS -X POST \"${DECKHAND_URL:-http://127.0.0.1:8000}/agents/claude-code/hook\" -H \"Authorization: Bearer ${DECKHAND_API_KEY}\" -H 'Content-Type: application/json' --data-binary @- >/dev/null || true"
+            "command": "jq -c '. + {iterm_session_id: env.ITERM_SESSION_ID}' | curl -sS -X POST \"${DECKHAND_URL:-http://127.0.0.1:8000}/agents/claude-code/hook\" -H \"Authorization: Bearer ${DECKHAND_API_KEY}\" -H 'Content-Type: application/json' --data-binary @- >/dev/null || true"
           }
         ]
       }
@@ -48,7 +48,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "jq -c . | curl -sS -X POST \"${DECKHAND_URL:-http://127.0.0.1:8000}/agents/claude-code/hook\" -H \"Authorization: Bearer ${DECKHAND_API_KEY}\" -H 'Content-Type: application/json' --data-binary @- >/dev/null || true"
+            "command": "jq -c '. + {iterm_session_id: env.ITERM_SESSION_ID}' | curl -sS -X POST \"${DECKHAND_URL:-http://127.0.0.1:8000}/agents/claude-code/hook\" -H \"Authorization: Bearer ${DECKHAND_API_KEY}\" -H 'Content-Type: application/json' --data-binary @- >/dev/null || true"
           }
         ]
       }
@@ -58,7 +58,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "jq -c . | curl -sS -X POST \"${DECKHAND_URL:-http://127.0.0.1:8000}/agents/claude-code/hook\" -H \"Authorization: Bearer ${DECKHAND_API_KEY}\" -H 'Content-Type: application/json' --data-binary @- >/dev/null || true"
+            "command": "jq -c '. + {iterm_session_id: env.ITERM_SESSION_ID}' | curl -sS -X POST \"${DECKHAND_URL:-http://127.0.0.1:8000}/agents/claude-code/hook\" -H \"Authorization: Bearer ${DECKHAND_API_KEY}\" -H 'Content-Type: application/json' --data-binary @- >/dev/null || true"
           }
         ]
       }
