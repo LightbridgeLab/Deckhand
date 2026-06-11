@@ -8,8 +8,14 @@ Off by default. Enable in ``config.toml``::
 
 Or via env: ``DECKHAND_EVENT_LOG_ENABLED=1`` and ``DECKHAND_EVENT_LOG=<path>``.
 
-Default path is ``./.deckhand/events.log`` (relative to the service's working
-directory). The directory is created on first write.
+The default path is ``.deckhand/events.log``. Relative paths are resolved
+by :func:`deckhand.config.loader.resolve_project_path` against the directory
+containing ``config.toml`` when one was loaded, otherwise against the current
+working directory; the server (:class:`deckhand.config.settings.Settings`)
+and CLI (:func:`deckhand.cli.config.load`) both use that helper so a
+relative path always lands in the same location regardless of where each
+process was started from. Absolute paths pass through unchanged. The parent
+directory is created on first write.
 """
 
 from __future__ import annotations
