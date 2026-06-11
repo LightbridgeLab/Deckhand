@@ -50,8 +50,7 @@ All notable changes to Deckhand will be documented in this file.
   - Stream Deck client integration guide (`docs/STREAMDECK_CLIENT.md`)
   - Complete API reference (`docs/API.md`)
   - Event schema reference (`docs/EVENTS.md`)
-  - Example plugin template (`examples/example_plugin.py`)
-  - Stream Deck client template (`examples/streamdeck_client_template.py`)
+  - Reference hook configurations (`examples/claude_code_hooks.json`, `examples/cursor_hooks.json`)
 
 - **Agent Abstraction**
   - Base agent interface

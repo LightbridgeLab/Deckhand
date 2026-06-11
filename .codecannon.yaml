@@ -123,3 +123,5 @@ config:
   #   - API logic in services/, UI in app/ — no business logic in components
   #   - Use the design system tokens — no hardcoded hex values
   #   - Feature flags via the flags/ module only; no ad-hoc env var checks
+
+  STALE_DAYS: "14"

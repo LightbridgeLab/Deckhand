@@ -191,4 +191,5 @@ def build_scoped_registry(
         state=ScopedStateStore(base.state, capability),  # type: ignore[arg-type]
         events=ScopedEventBus(base.events, capability),  # type: ignore[arg-type]
         orchestrator=None,
+        _shutdown_hooks=base._shutdown_hooks,
     )

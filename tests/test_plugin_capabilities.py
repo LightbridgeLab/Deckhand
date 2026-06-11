@@ -107,21 +107,37 @@ async def test_state_only_allows_state_and_signals_but_not_actions(
         await scoped.actions.run("agent.start", {"agent_id": "mock-1"})
 
 
-async def test_load_plugins_with_spec(plugin_registry: PluginRegistry) -> None:
+async def test_load_plugins_with_spec(
+    plugin_registry: PluginRegistry, tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """state-only capability allows a plugin to register a signal."""
+    plugin_dir = tmp_path
+    (plugin_dir / "signal_plugin.py").write_text(
+        "async def _h(payload): return None\n"
+        "def register(registry):\n"
+        "    registry.signals.register('test.signal', _h)\n"
+    )
+    monkeypatch.syspath_prepend(str(plugin_dir))
     load_plugins(
-        [PluginSpec(module="deckhand.plugins.builtin", capability="state-only")],
+        [PluginSpec(module="signal_plugin", capability="state-only")],
         plugin_registry,
     )
-    assert plugin_registry.signals.get_signal_metadata("camera.motion") is not None
+    assert plugin_registry.signals.get_signal_metadata("test.signal") is not None
 
 
-async def test_load_plugins_read_only_builtin_fails(
-    plugin_registry: PluginRegistry,
+async def test_load_plugins_read_only_blocks_signal_register(
+    plugin_registry: PluginRegistry, tmp_path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # builtin registers a signal, so read-only should reject at register time
+    """A plugin that tries to register under read-only must be rejected."""
+    (tmp_path / "rwsignal_plugin.py").write_text(
+        "async def _h(payload): return None\n"
+        "def register(registry):\n"
+        "    registry.signals.register('rw.signal', _h)\n"
+    )
+    monkeypatch.syspath_prepend(str(tmp_path))
     with pytest.raises(PermissionError):
         load_plugins(
-            [PluginSpec(module="deckhand.plugins.builtin", capability="read-only")],
+            [PluginSpec(module="rwsignal_plugin", capability="read-only")],
             plugin_registry,
         )
 

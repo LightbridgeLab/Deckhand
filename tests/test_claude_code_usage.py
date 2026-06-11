@@ -25,7 +25,11 @@ def state() -> StateStore:
 
 def _registry_stub(state: StateStore):
     class _StubRegistry:
-        pass
+        def __init__(self) -> None:
+            self.shutdown_hooks: list = []
+
+        def on_shutdown(self, hook) -> None:
+            self.shutdown_hooks.append(hook)
 
     r = _StubRegistry()
     r.state = state

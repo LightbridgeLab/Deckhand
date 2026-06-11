@@ -1,16 +1,8 @@
 # Deckhand Examples
 
-This directory contains example implementations for extending Deckhand Core.
+Reference configuration files for wiring Deckhand into the supported agent runtimes.
 
-## Example Plugin
+- **`claude_code_hooks.json`** — Claude Code hook configuration that forwards session lifecycle events (start, awaiting input, stop) to Deckhand. Drop into `~/.claude/settings.json` (or merge with an existing file).
+- **`cursor_hooks.json`** — Cursor hook configuration with the same shape for Cursor sessions.
 
-**`example_plugin.py`** - A complete annotated plugin demonstrating:
-- Multiple actions with payload validation
-- Signal handling with state updates
-- Event emission
-- Metadata registration
-- TTL usage patterns
-
-Use this as a template for creating your own Deckhand Core plugins. See [Plugin Guide](../docs/PLUGIN_GUIDE.md) for detailed documentation.
-
-For the OpenDeck plugin (Stream Deck bridge), see [opendeck-plugin/](../opendeck-plugin/).
+For writing your own server-side plugin (custom actions, signals, state, or pollers), see [docs/PLUGIN_GUIDE.md](../docs/PLUGIN_GUIDE.md). For the OpenDeck plugin (Stream Deck bridge), see [opendeck-plugin/](../opendeck-plugin/).
