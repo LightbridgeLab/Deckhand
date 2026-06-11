@@ -62,9 +62,9 @@ class Settings:
         self.service_name = "deckhand"
         self.host = "127.0.0.1"
         self.port = 8000
-        self.plugin_specs: list[PluginSpec] = [
-            PluginSpec(module="deckhand.plugins.builtin", capability="full")
-        ]
+        # No default plugins — users opt in to specific plugins (e.g.
+        # ``deckhand.plugins.claude_code_usage``) via config.toml.
+        self.plugin_specs: list[PluginSpec] = []
         self.config_file_path: str | None = None
         self.state_file_path: str | None = None
         self.rate_limit_rpm: int = 60

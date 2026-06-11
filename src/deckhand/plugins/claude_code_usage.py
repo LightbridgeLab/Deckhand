@@ -41,10 +41,8 @@ Configuration block (all keys optional)::
     week_token_cap        = 10000000
     week_sonnet_token_cap = 5000000
 
-Known limitation: the polling task is spawned at ``register()`` time and is
-never cancelled. On plugin reload it leaks until the service exits. This is
-intentional for v1 and will be cleaned up alongside the broader plugin
-shutdown hook tracked in #29.
+The plugin registers a shutdown hook via :meth:`PluginRegistry.on_shutdown`
+so the polling task is cancelled cleanly when the service stops.
 """
 
 from __future__ import annotations
@@ -114,6 +112,15 @@ def register(registry: PluginRegistry) -> None:
     task = asyncio.create_task(poller.run())
     _BACKGROUND_TASKS.add(task)
     task.add_done_callback(_BACKGROUND_TASKS.discard)
+
+    async def _shutdown() -> None:
+        task.cancel()
+        try:
+            await task
+        except (asyncio.CancelledError, Exception):
+            pass
+
+    registry.on_shutdown(_shutdown)
 
 
 # ---------------------------------------------------------------- poller --

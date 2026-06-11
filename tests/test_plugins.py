@@ -12,16 +12,6 @@ from deckhand.plugins.loader import load_plugins
 from deckhand.plugins.registry import PluginRegistry
 
 
-async def test_plugin_loading_valid(plugin_registry: PluginRegistry) -> None:
-    """Test plugin loading with valid module."""
-    load_plugins(["deckhand.plugins.builtin"], plugin_registry)
-
-    # Verify signals are registered
-    signals = plugin_registry.signals.list_signals()
-    signal_names = [s.name for s in signals]
-    assert "camera.motion" in signal_names
-
-
 async def test_plugin_loading_missing_register() -> None:
     """Test plugin loading with missing register() function raises ValueError."""
     # Create a temporary module without register function
@@ -50,19 +40,22 @@ async def test_plugin_loading_missing_register() -> None:
             sys.path.remove(tmpdir)
 
 
-async def test_builtin_plugin_registration(plugin_registry: PluginRegistry) -> None:
-    """Test builtin plugin registration."""
-    from deckhand.plugins.builtin import register
+async def test_plugin_loading_valid(plugin_registry: PluginRegistry) -> None:
+    """Test plugin loading with a valid in-test module that registers a signal."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        plugin_file = Path(tmpdir) / "ok_plugin.py"
+        plugin_file.write_text(
+            "async def _handler(payload):\n    return None\n\n"
+            "def register(registry):\n"
+            "    registry.signals.register('ok.signal', _handler)\n"
+        )
+        import sys
 
-    register(plugin_registry)
-
-    # Verify camera.motion signal
-    signal_meta = plugin_registry.signals.get_signal_metadata("camera.motion")
-    assert signal_meta is not None
-    assert signal_meta.description == "Handle camera motion detection webhook"
-
-    # Test signal handling
-    await plugin_registry.signals.handle(
-        "camera.motion",
-        {"key": "camera.test.motion", "active": True},
-    )
+        sys.path.insert(0, tmpdir)
+        try:
+            load_plugins(["ok_plugin"], plugin_registry)
+            assert any(
+                s.name == "ok.signal" for s in plugin_registry.signals.list_signals()
+            )
+        finally:
+            sys.path.remove(tmpdir)

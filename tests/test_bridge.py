@@ -18,6 +18,7 @@ TEST_API_KEY = "test-key-for-bridge-tests"
 async def client(monkeypatch):
     """Async HTTP client against the Deckhand Core app with auth."""
     monkeypatch.setenv("DECKHAND_API_KEY", TEST_API_KEY)
+    monkeypatch.setenv("DECKHAND_CONFIG_FILE", "/tmp/deckhand-tests-nonexistent.toml")
 
     # Import after env is set so Settings picks up the key
     import importlib
@@ -27,6 +28,18 @@ async def client(monkeypatch):
     from deckhand.main import app, lifespan
 
     async with lifespan(app):
+        # test_bridge.py predates the cleanup that removed default mock-agent
+        # registrations from the lifespan. The HTTP route shapes it exercises
+        # are still real; we register the same mock agents here so each test
+        # keeps testing the routes rather than the lifespan policy.
+        from deckhand.agents.mock import MockAgent
+
+        main_mod.orchestrator.register_agent(
+            MockAgent(agent_id="mock-1", project_root="/home/dev/project-alpha")
+        )
+        main_mod.orchestrator.register_agent(
+            MockAgent(agent_id="mock-2", project_root="/home/dev/project-beta")
+        )
         transport = ASGITransport(app=app)
         headers = {"Authorization": f"Bearer {TEST_API_KEY}"}
         async with AsyncClient(

@@ -9,9 +9,9 @@ host = "127.0.0.1"
 port = 8000
 
 [plugins]
-# List of plugin module paths to load
+# List of plugin module paths to load. There are no default plugins —
+# add the ones you want.
 modules = [
-  "deckhand.plugins.builtin",
   # "deckhand.plugins.claude_code_usage",
   # "my_custom_plugin",
 ]

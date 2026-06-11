@@ -74,25 +74,3 @@ async def test_signal_metadata(signal_registry: SignalRegistry) -> None:
     assert metadata.name == "test.signal"
     assert metadata.description == "Test signal"
     assert "key" in metadata.payload_schema
-
-
-async def test_builtin_camera_motion_signal(plugin_registry) -> None:
-    """Test builtin camera.motion signal with state updates."""
-    from deckhand.plugins.builtin import register
-
-    register(plugin_registry)
-
-    # Verify signal is registered
-    signals = plugin_registry.signals.list_signals()
-    assert any(s.name == "camera.motion" for s in signals)
-
-    # Handle motion signal
-    await plugin_registry.signals.handle(
-        "camera.motion",
-        {"key": "camera.test.motion", "active": True},
-    )
-
-    # Verify state was updated
-    state = plugin_registry.state.get_state("camera.test.motion")
-    assert state is not None
-    assert state["value"]["active"] is True

@@ -11,6 +11,9 @@ TEST_API_KEY = "test-key-for-cursor-hook-tests"
 @pytest.fixture
 async def client(monkeypatch):
     monkeypatch.setenv("DECKHAND_API_KEY", TEST_API_KEY)
+    # Isolate from any developer-local config.toml that may reference
+    # plugins that no longer exist.
+    monkeypatch.setenv("DECKHAND_CONFIG_FILE", "/tmp/deckhand-tests-nonexistent.toml")
 
     import importlib
     import deckhand.main as main_mod

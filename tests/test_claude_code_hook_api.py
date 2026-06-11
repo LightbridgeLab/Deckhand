@@ -11,6 +11,7 @@ TEST_API_KEY = "test-key-for-claude-code-hook-tests"
 @pytest.fixture
 async def client(monkeypatch):
     monkeypatch.setenv("DECKHAND_API_KEY", TEST_API_KEY)
+    monkeypatch.setenv("DECKHAND_CONFIG_FILE", "/tmp/deckhand-tests-nonexistent.toml")
 
     import importlib
     import deckhand.main as main_mod
@@ -333,7 +334,8 @@ async def test_focus_next_pending_action_against_live_orchestrator(
         main_mod.make_iterm_focuser = iterm_mod.make_iterm_focuser  # type: ignore[assignment]
 
 
-async def test_hook_requires_auth() -> None:
+async def test_hook_requires_auth(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DECKHAND_CONFIG_FILE", "/tmp/deckhand-tests-nonexistent.toml")
     import importlib
     import deckhand.main as main_mod
 

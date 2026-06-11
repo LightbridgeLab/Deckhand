@@ -128,8 +128,8 @@ Six actions install with the plugin. Drag them onto buttons from the Deckhand ca
 | **Run Action** | Execute any Deckhand action on press (e.g. `agents.focus_next_pending`). |
 | **Signal Trigger** | Fire a Deckhand signal on press. |
 | **Agent Status** | Monitor + start/cancel/input a specific agent. |
-| **Agent Slot** | Dynamic slot for priority-ranked agents. *Likely retired by #29 — `agents.focus_next_pending` covers most use cases.* |
-| **Agent Dashboard** | Aggregate agent summary on one button. *Same — being reconsidered under #29.* |
+| **Agent Slot** | Dynamic slot bound to a priority-ranked agent. Useful when you want a fixed button that always shows the most attention-worthy session. |
+| **Agent Dashboard** | One-button summary of every tracked agent (counts by status, focuses attention on press). |
 
 See [opendeck-plugin/README.md](opendeck-plugin/README.md) for property-inspector internals.
 
@@ -159,7 +159,7 @@ Connection settings come from `--url` / `--api-key`, then `DECKHAND_URL` / `DECK
 | Listen host | `DECKHAND_HOST` | `127.0.0.1` |
 | Listen port | `DECKHAND_PORT` | `8000` |
 | API key | `DECKHAND_API_KEY` | auto-generated write key (logged at startup) |
-| Plugin modules | `DECKHAND_PLUGINS` | `deckhand.plugins.builtin` |
+| Plugin modules | `DECKHAND_PLUGINS` | none (opt in via `config.toml`) |
 | State persistence file | `DECKHAND_STATE_FILE` | none (in-memory) |
 | Event log | `DECKHAND_EVENT_LOG_ENABLED` / `DECKHAND_EVENT_LOG` | off; `.deckhand/events.log` |
 | Config file path | `DECKHAND_CONFIG_FILE` | `./config.toml` if present |
@@ -189,7 +189,6 @@ The shipped feature surface is small by design. Tracked work:
 - [#26](https://github.com/LightbridgeLab/Deckhand/issues/26) — Macro runner with iTerm primitives.
 - [#22](https://github.com/LightbridgeLab/Deckhand/issues/22) — Progress-ring image format for usage buttons.
 - [#28](https://github.com/LightbridgeLab/Deckhand/issues/28) — Hero screenshots + demo video.
-- [#29](https://github.com/LightbridgeLab/Deckhand/issues/29) — Cleanup pass: retire Agent Slot / Dashboard if `agents.focus_next_pending` covers their use cases, plug the plugin-shutdown hook leak called out in `claude_code_usage.py`.
 
 ## License
 

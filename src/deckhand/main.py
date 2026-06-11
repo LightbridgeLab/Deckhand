@@ -23,7 +23,6 @@ from starlette.responses import JSONResponse
 
 from deckhand.agents.claude_code import ClaudeCodeAgent
 from deckhand.agents.cursor import CursorAgent
-from deckhand.agents.mock import MockAgent
 from deckhand.agents.pending_input import PendingInputTracker
 from deckhand.agents.summary import update_cursor_summary
 from deckhand.config.settings import Settings
@@ -106,16 +105,12 @@ async def lifespan(app: FastAPI):
     # Initialize rate limiter
     rate_limiter = RateLimiter(settings.rate_limit_rpm)
 
-    # Initialize orchestrator
+    # Initialize orchestrator. Agents are registered on demand via the
+    # Claude Code / Cursor hook handlers or POST /agents/register — no
+    # framework-style default agents under the v0.3 positioning.
     orchestrator = Orchestrator(
         state_persist_path=settings.state_file_path,
         metrics=metrics,
-    )
-    orchestrator.register_agent(
-        MockAgent(agent_id="mock-1", project_root="/home/dev/project-alpha")
-    )
-    orchestrator.register_agent(
-        MockAgent(agent_id="mock-2", project_root="/home/dev/project-beta")
     )
 
     # Initialize registries
@@ -155,6 +150,8 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info("Shutting down Deckhand service...")
+    if plugin_registry is not None:
+        await plugin_registry.run_shutdown_hooks()
 
 
 app = FastAPI(title="Deckhand", version=SERVICE_VERSION, lifespan=lifespan)
