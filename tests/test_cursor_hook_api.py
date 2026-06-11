@@ -111,3 +111,150 @@ async def test_focus_cursor_agent_action(client: AsyncClient) -> None:
         json={"agent_id": "cursor-11111111"},
     )
     assert resp.status_code == 200
+
+
+async def test_hook_registers_cursor_focuser_on_session_start(
+    client: AsyncClient,
+) -> None:
+    """sessionStart must wire a focuser into the orchestrator so the agent is
+    reachable via agents.focus_next_pending."""
+    import deckhand.main as main_mod
+
+    await client.post(
+        "/agents/cursor/hook",
+        json={
+            "session_id": "22222222aaaaaaaa",
+            "hook_event_name": "sessionStart",
+            "cwd": "/tmp/beta",
+        },
+    )
+
+    assert "cursor-22222222" in main_mod.orchestrator.focusers
+
+
+async def test_hook_rebinds_cursor_focuser_when_workspace_changes(
+    client: AsyncClient,
+) -> None:
+    """If the workspace path changes mid-session (rare but valid — multi-root
+    workspaces or a user switching roots), the focuser must rebind so the
+    next focus call lands on the new workspace."""
+    import deckhand.main as main_mod
+
+    session = {"session_id": "33333333bbbbbbbb"}
+    await client.post(
+        "/agents/cursor/hook",
+        json={**session, "hook_event_name": "sessionStart", "cwd": "/tmp/before"},
+    )
+    first = main_mod.orchestrator.focusers.get("cursor-33333333")
+
+    await client.post(
+        "/agents/cursor/hook",
+        json={
+            **session,
+            "hook_event_name": "beforeSubmitPrompt",
+            "cwd": "/tmp/after",
+        },
+    )
+    second = main_mod.orchestrator.focusers.get("cursor-33333333")
+
+    assert second is not None
+    assert second is not first
+
+
+async def test_focus_next_pending_cycles_through_mixed_cursor_and_claude(
+    client: AsyncClient,
+) -> None:
+    """Acceptance test from #24: mixed Claude + Cursor pending sessions both
+    surface in agents.pending_input and are reached by successive
+    focus_next_pending calls."""
+    import deckhand.main as main_mod
+
+    # Register a Cursor agent and drive it to awaiting_input via the
+    # documented hook-config opt-in (deckhand_status=awaiting_input on stop).
+    await client.post(
+        "/agents/cursor/hook",
+        json={
+            "session_id": "cccccccc11111111",
+            "hook_event_name": "sessionStart",
+            "cwd": "/tmp/cursor-project",
+        },
+    )
+    await client.post(
+        "/agents/cursor/hook",
+        json={
+            "session_id": "cccccccc11111111",
+            "hook_event_name": "stop",
+            "cwd": "/tmp/cursor-project",
+            "deckhand_status": "awaiting_input",
+        },
+    )
+
+    # Register a Claude Code agent and drive it to awaiting_input.
+    await client.post(
+        "/agents/claude-code/hook",
+        json={
+            "session_id": "dddddddd22222222",
+            "hook_event_name": "SessionStart",
+            "cwd": "/tmp/cc-project",
+            "iterm_session_id": "cc-iterm-uuid",
+        },
+    )
+    await client.post(
+        "/agents/claude-code/hook",
+        json={
+            "session_id": "dddddddd22222222",
+            "hook_event_name": "Notification",
+            "iterm_session_id": "cc-iterm-uuid",
+        },
+    )
+
+    # Both should appear in pending_input. Cursor registered first → head.
+    pending_resp = await client.get("/state/agents.pending_input")
+    pending = pending_resp.json()["value"]["agent_ids"]
+    assert "cursor-cccccccc" in pending
+    assert "claude-code-dddddddd" in pending
+
+    # Stub both focusers so the test doesn't actually launch apps.
+    fired: list[str] = []
+
+    async def fake_cursor() -> None:
+        fired.append("cursor")
+
+    async def fake_claude() -> None:
+        fired.append("claude")
+
+    main_mod.orchestrator.register_focuser("cursor-cccccccc", fake_cursor)
+    main_mod.orchestrator.register_focuser("claude-code-dddddddd", fake_claude)
+
+    # Each press of the focus_next_pending button focuses the head, then
+    # the head resolves (status leaves awaiting_input) and the next press
+    # hits the other agent. Simulate the resolution manually by driving
+    # each focused agent's status off awaiting_input.
+    first_focused = await main_mod.orchestrator.focus_next_pending()
+    assert first_focused in {"cursor-cccccccc", "claude-code-dddddddd"}
+
+    # Resolve the first focused agent so the next press cycles to the other.
+    if first_focused == "cursor-cccccccc":
+        await client.post(
+            "/agents/cursor/hook",
+            json={
+                "session_id": "cccccccc11111111",
+                "hook_event_name": "beforeSubmitPrompt",
+                "cwd": "/tmp/cursor-project",
+            },
+        )
+        expected_next = "claude-code-dddddddd"
+    else:
+        await client.post(
+            "/agents/claude-code/hook",
+            json={
+                "session_id": "dddddddd22222222",
+                "hook_event_name": "UserPromptSubmit",
+                "iterm_session_id": "cc-iterm-uuid",
+            },
+        )
+        expected_next = "cursor-cccccccc"
+
+    second_focused = await main_mod.orchestrator.focus_next_pending()
+    assert second_focused == expected_next
+    assert set(fired) == {"cursor", "claude"}

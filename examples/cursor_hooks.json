@@ -30,7 +30,8 @@
     ],
     "stop": [
       {
-        "command": "jq -c '{session_id, hook_event_name: \"stop\", cwd: .workspace_roots[0] // .cwd // empty}' | curl -sS -X POST \"${DECKHAND_URL:-http://127.0.0.1:8000}/agents/cursor/hook\" -H \"Authorization: Bearer ${DECKHAND_API_KEY}\" -H 'Content-Type: application/json' --data-binary @- >/dev/null || true"
+        "_comment": "On `stop` we set deckhand_status=awaiting_input. Cursor lacks an explicit `agent is waiting for the user` event (unlike Claude Code's `Notification`), so `stop` — the agent finished a turn and the user is now the bottleneck — is the right semantic for the focus_next_pending button to surface this session as needing attention. Edit this override if you want a different mapping.",
+        "command": "jq -c '{session_id, hook_event_name: \"stop\", cwd: .workspace_roots[0] // .cwd // empty, deckhand_status: \"awaiting_input\"}' | curl -sS -X POST \"${DECKHAND_URL:-http://127.0.0.1:8000}/agents/cursor/hook\" -H \"Authorization: Bearer ${DECKHAND_API_KEY}\" -H 'Content-Type: application/json' --data-binary @- >/dev/null || true"
       }
     ],
     "sessionEnd": [
