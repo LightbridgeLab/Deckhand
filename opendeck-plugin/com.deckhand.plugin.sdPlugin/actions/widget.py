@@ -25,7 +25,12 @@ class WidgetHandler:
         # context → {"state_key": str, "action_on_press": str, "display_format": str}
         self._watched: dict[str, dict[str, Any]] = {}
 
-    async def on_will_appear(self, ws: websockets.asyncio.client.ClientConnection, context: str, settings: dict[str, Any]) -> None:
+    async def on_will_appear(
+        self,
+        ws: websockets.asyncio.client.ClientConnection,
+        context: str,
+        settings: dict[str, Any],
+    ) -> None:
         state_key = settings.get("state_key", "")
         action_on_press = settings.get("action_on_press", "")
         display_format = settings.get("display_format", "raw")
@@ -55,7 +60,12 @@ class WidgetHandler:
     async def on_will_disappear(self, context: str) -> None:
         self._watched.pop(context, None)
 
-    async def on_key_down(self, ws: websockets.asyncio.client.ClientConnection, context: str, settings: dict[str, Any]) -> None:
+    async def on_key_down(
+        self,
+        ws: websockets.asyncio.client.ClientConnection,
+        context: str,
+        settings: dict[str, Any],
+    ) -> None:
         action_name = settings.get("action_on_press", "")
         if not action_name:
             return
@@ -65,25 +75,45 @@ class WidgetHandler:
         except Exception:
             logger.exception("Widget key action failed: %s", action_name)
 
-    async def on_did_receive_settings(self, ws: websockets.asyncio.client.ClientConnection, context: str, settings: dict[str, Any]) -> None:
+    async def on_did_receive_settings(
+        self,
+        ws: websockets.asyncio.client.ClientConnection,
+        context: str,
+        settings: dict[str, Any],
+    ) -> None:
         """Settings changed from Property Inspector — re-initialize."""
         await self.on_will_appear(ws, context, settings)
 
-    async def on_send_to_plugin(self, ws: websockets.asyncio.client.ClientConnection, context: str, payload: dict[str, Any]) -> None:
+    async def on_send_to_plugin(
+        self,
+        ws: websockets.asyncio.client.ClientConnection,
+        context: str,
+        payload: dict[str, Any],
+    ) -> None:
         """Handle Property Inspector requests (e.g., fetch state keys)."""
         request_type = payload.get("type", "")
         if request_type == "getStateKeys":
             try:
                 entries = await self.bridge.list_state()
                 keys = [e.get("key", "") for e in entries if e.get("key")]
-                await _send_to_property_inspector(ws, context, {
-                    "type": "stateKeyList",
-                    "keys": keys,
-                })
+                await _send_to_property_inspector(
+                    ws,
+                    context,
+                    {
+                        "type": "stateKeyList",
+                        "keys": keys,
+                    },
+                )
             except Exception:
                 logger.exception("Failed to fetch state keys for PI")
 
-    async def on_deckhand_event(self, ws: websockets.asyncio.client.ClientConnection, event_type: str, event: dict[str, Any], all_contexts: dict[str, dict[str, Any]]) -> None:
+    async def on_deckhand_event(
+        self,
+        ws: websockets.asyncio.client.ClientConnection,
+        event_type: str,
+        event: dict[str, Any],
+        all_contexts: dict[str, dict[str, Any]],
+    ) -> None:
         """Handle events from Deckhand Core."""
         if event_type != "state.changed":
             return
@@ -108,6 +138,7 @@ class WidgetHandler:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _format_value(value: Any, fmt: str) -> str:
     """Format a state value for display on a button."""
@@ -147,17 +178,31 @@ def _format_value(value: Any, fmt: str) -> str:
     return str(value)[:12]
 
 
-async def _set_title(ws: websockets.asyncio.client.ClientConnection, context: str, title: str) -> None:
-    await ws.send(json.dumps({
-        "event": "setTitle",
-        "context": context,
-        "payload": {"title": title},
-    }))
+async def _set_title(
+    ws: websockets.asyncio.client.ClientConnection, context: str, title: str
+) -> None:
+    await ws.send(
+        json.dumps(
+            {
+                "event": "setTitle",
+                "context": context,
+                "payload": {"title": title},
+            }
+        )
+    )
 
 
-async def _send_to_property_inspector(ws: websockets.asyncio.client.ClientConnection, context: str, payload: dict[str, Any]) -> None:
-    await ws.send(json.dumps({
-        "event": "sendToPropertyInspector",
-        "context": context,
-        "payload": payload,
-    }))
+async def _send_to_property_inspector(
+    ws: websockets.asyncio.client.ClientConnection,
+    context: str,
+    payload: dict[str, Any],
+) -> None:
+    await ws.send(
+        json.dumps(
+            {
+                "event": "sendToPropertyInspector",
+                "context": context,
+                "payload": payload,
+            }
+        )
+    )

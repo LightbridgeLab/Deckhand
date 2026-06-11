@@ -3,8 +3,14 @@
 Precedence (highest first):
 1. CLI flags (``--url``, ``--api-key``)
 2. Environment variables (``DECKHAND_URL``, ``DECKHAND_API_KEY``, ``DECKHAND_EVENT_LOG``)
-3. ``config.toml`` ``[service]`` / ``[auth]`` / ``[event_log]``
-4. Built-in defaults
+3. ``config.toml`` ``[client]`` section (preferred — same field any other
+   Deckhand client reads from)
+4. ``config.toml`` ``[service]`` / ``[auth]`` legacy extraction (URL from
+   ``[service]`` host+port, key from ``[auth].api_keys[0]``)
+5. Built-in defaults
+
+Config file discovery matches Deckhand Core: ``DECKHAND_CONFIG_FILE`` env
+var → ``./config.toml`` → ``~/.config/deckhand/config.toml``.
 """
 
 from __future__ import annotations
@@ -38,23 +44,41 @@ def load(
     config_path = config_file or os.getenv("DECKHAND_CONFIG_FILE")
     if not config_path and Path("config.toml").exists():
         config_path = "config.toml"
+    if not config_path:
+        home_config = Path(os.path.expanduser("~/.config/deckhand/config.toml"))
+        if home_config.exists():
+            config_path = str(home_config)
 
     resolved_config_path: str | None = None
     if config_path and Path(config_path).exists():
         resolved_config_path = config_path
         config = load_config(config_path)
 
-        service = config.get("service", {})
-        host = service.get("host", "127.0.0.1")
-        port = service.get("port", 8000)
-        if host or port:
-            file_url = f"http://{host}:{port}"
+        # Preferred: explicit [client] section. Same shape any other
+        # Deckhand client reads from.
+        client_section = config.get("client", {})
+        if isinstance(client_section, dict):
+            if isinstance(client_section.get("url"), str):
+                file_url = client_section["url"]
+            if isinstance(client_section.get("api_key"), str):
+                file_key = client_section["api_key"]
 
-        auth = config.get("auth", {})
-        if isinstance(auth.get("api_keys"), list) and auth["api_keys"]:
-            first = auth["api_keys"][0]
-            if isinstance(first, dict) and "key" in first:
-                file_key = first["key"]
+        # Fallback: infer URL from the service's listen address and the
+        # key from the first entry of [auth].api_keys. Kept so existing
+        # configs that don't have a [client] section still work.
+        if file_url is None:
+            service = config.get("service", {})
+            host = service.get("host", "127.0.0.1")
+            port = service.get("port", 8000)
+            if host or port:
+                file_url = f"http://{host}:{port}"
+
+        if file_key is None:
+            auth = config.get("auth", {})
+            if isinstance(auth.get("api_keys"), list) and auth["api_keys"]:
+                first = auth["api_keys"][0]
+                if isinstance(first, dict) and "key" in first:
+                    file_key = first["key"]
 
         el = config.get("event_log", {})
         if isinstance(el.get("path"), str):

@@ -20,12 +20,18 @@ cp -r com.deckhand.plugin.sdPlugin ~/Library/Application\ Support/OpenDeck/Plugi
 cp -r com.deckhand.plugin.sdPlugin ~/.config/OpenDeck/Plugins/
 ```
 
-Configure auth so the plugin can reach Deckhand Core:
+Configure auth so the plugin can reach Deckhand Core. The plugin reads `DECKHAND_URL` and `DECKHAND_API_KEY` in this order (first hit wins):
 
-```bash
-cd ~/Library/Application\ Support/OpenDeck/Plugins/com.deckhand.plugin.sdPlugin
-cp deckhand.env.example deckhand.env
-# Set DECKHAND_API_KEY to the same value as Deckhand Core (config.toml or .env)
+1. The `DECKHAND_URL` / `DECKHAND_API_KEY` env vars (useful if you launch the plugin from a wrapper script or `launchctl setenv`).
+2. The `[client]` section of the shared `config.toml`. Discovery order matches the Deckhand Core service: `DECKHAND_CONFIG_FILE` env var, then `./config.toml` (relative to the plugin's working dir), then `~/.config/deckhand/config.toml`. The home path is the intended location for OpenDeck-plugin-only installs.
+3. A legacy `deckhand.env` file next to `plugin.py` — kept working for one release as a deprecation path. The plugin logs a warning when it falls back to this file.
+
+The simplest fresh install just edits `~/.config/deckhand/config.toml`:
+
+```toml
+[client]
+url = "http://127.0.0.1:8000"
+api_key = "your-write-key"   # same value as one of [auth].api_keys
 ```
 
 Then restart OpenDeck. A "Deckhand" category should appear with six actions:
@@ -114,7 +120,10 @@ Run the plugin directly (bypassing OpenDeck, for testing):
 
 ```bash
 cd com.deckhand.plugin.sdPlugin
-cp deckhand.env.example deckhand.env   # set DECKHAND_API_KEY
+# Connection settings come from one of the sources above. The fastest path
+# for local dev is to export the env vars in the same shell:
+export DECKHAND_URL=http://127.0.0.1:8000
+export DECKHAND_API_KEY=<your-key>
 ./run.sh -port 28196 -pluginUUID test -registerEvent registerPlugin -info '{}'
 ```
 

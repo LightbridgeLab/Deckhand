@@ -447,3 +447,77 @@ def test_config_file_only(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> No
     cfg = cli_config.load()
     assert cfg.url == "http://1.2.3.4:1234"
     assert cfg.api_key == "file-key"
+
+
+def test_config_prefers_client_section_over_legacy_extraction(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The [client] section is the canonical place for client URL + key.
+    When present it wins over the legacy [service]/[auth] inference."""
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        '[service]\nhost = "1.2.3.4"\nport = 1234\n'
+        '[auth]\napi_keys = [{ key = "auth-key", scope = "write" }]\n'
+        "[client]\n"
+        'url = "http://client:9999"\n'
+        'api_key = "client-key"\n'
+    )
+    monkeypatch.chdir(tmp_path)
+    for var in ("DECKHAND_URL", "DECKHAND_API_KEY", "DECKHAND_CONFIG_FILE"):
+        monkeypatch.delenv(var, raising=False)
+
+    cfg = cli_config.load()
+    assert cfg.url == "http://client:9999"
+    assert cfg.api_key == "client-key"
+
+
+def test_config_falls_back_to_home_dir_when_no_project_config(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """With no ./config.toml and no DECKHAND_CONFIG_FILE, the CLI falls back
+    to ~/.config/deckhand/config.toml. This is the OpenDeck-plugin-only
+    install path: no service checkout, just a home-dir config."""
+    fake_home = tmp_path / "home"
+    home_config_dir = fake_home / ".config" / "deckhand"
+    home_config_dir.mkdir(parents=True)
+    (home_config_dir / "config.toml").write_text(
+        '[client]\nurl = "http://home:8000"\napi_key = "home-key"\n'
+    )
+
+    project_dir = tmp_path / "project-without-config"
+    project_dir.mkdir()
+    monkeypatch.chdir(project_dir)
+    monkeypatch.setenv("HOME", str(fake_home))
+    for var in ("DECKHAND_URL", "DECKHAND_API_KEY", "DECKHAND_CONFIG_FILE"):
+        monkeypatch.delenv(var, raising=False)
+
+    cfg = cli_config.load()
+    assert cfg.url == "http://home:8000"
+    assert cfg.api_key == "home-key"
+
+
+def test_config_project_toml_wins_over_home_dir(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """If both ./config.toml and ~/.config/deckhand/config.toml exist, the
+    project-local one wins. Same precedence as the service uses."""
+    fake_home = tmp_path / "home"
+    (fake_home / ".config" / "deckhand").mkdir(parents=True)
+    (fake_home / ".config" / "deckhand" / "config.toml").write_text(
+        '[client]\nurl = "http://home:1"\napi_key = "home"\n'
+    )
+
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    (project_dir / "config.toml").write_text(
+        '[client]\nurl = "http://project:2"\napi_key = "project"\n'
+    )
+
+    monkeypatch.chdir(project_dir)
+    monkeypatch.setenv("HOME", str(fake_home))
+    for var in ("DECKHAND_URL", "DECKHAND_API_KEY", "DECKHAND_CONFIG_FILE"):
+        monkeypatch.delenv(var, raising=False)
+
+    cfg = cli_config.load()
+    assert cfg.url == "http://project:2"
+    assert cfg.api_key == "project"

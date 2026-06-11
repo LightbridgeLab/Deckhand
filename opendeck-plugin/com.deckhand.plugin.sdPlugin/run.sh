@@ -1,13 +1,10 @@
 #!/bin/bash
 DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# Load DECKHAND_URL and DECKHAND_API_KEY from deckhand.env (copy from deckhand.env.example).
-if [ -f "$DIR/deckhand.env" ]; then
-  set -a
-  # shellcheck disable=SC1091
-  source "$DIR/deckhand.env"
-  set +a
-fi
+# Connection settings (URL + API key) are resolved inside plugin.py — see
+# client_config.py. Order of precedence: DECKHAND_URL / DECKHAND_API_KEY env
+# vars → [client] section of the shared config.toml (./config.toml or
+# ~/.config/deckhand/config.toml) → legacy deckhand.env (deprecated).
 
 VENV="$DIR/.venv"
 if [ ! -x "$VENV/bin/python3" ]; then

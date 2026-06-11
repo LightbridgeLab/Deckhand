@@ -76,10 +76,26 @@ class Settings:
         # Auth: list of {key, scope} dicts
         self._raw_api_keys: list[dict[str, str]] = []
 
-        # Load from config file: explicit env var, or auto-discover ./config.toml
+        # Config file discovery order (first hit wins):
+        #   1. DECKHAND_CONFIG_FILE env var (explicit override)
+        #   2. ./config.toml (project-rooted; works on every OS the same way)
+        #   3. ~/.config/deckhand/config.toml (XDG-style home fallback)
+        #
+        # The home fallback exists so OpenDeck-plugin-only users — who don't
+        # have a service checkout to drop a config.toml into — have one
+        # well-known place to put their shared `[client]` config. The same
+        # file is read by any other Deckhand client (CLI, OpenDeck plugin).
+        # `expanduser` resolves the path on every OS; on Windows it lands at
+        # ``C:\Users\<user>\.config\deckhand\config.toml`` — functional but
+        # non-canonical. A future Windows-targeting change can prepend an
+        # ``%APPDATA%`` check between steps 2 and 3 without disturbing this.
         config_file = os.getenv("DECKHAND_CONFIG_FILE")
         if not config_file and os.path.exists("config.toml"):
             config_file = "config.toml"
+        if not config_file:
+            home_config = os.path.expanduser("~/.config/deckhand/config.toml")
+            if os.path.exists(home_config):
+                config_file = home_config
         if config_file:
             self.config_file_path = config_file
             self._load_from_config_file(config_file)

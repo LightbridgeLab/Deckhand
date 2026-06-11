@@ -76,7 +76,7 @@ cp -r opendeck-plugin/com.deckhand.plugin.sdPlugin \
   ~/.config/OpenDeck/Plugins/
 ```
 
-OpenDeck's plugin loader expects a `deckhand.env` file next to the plugin. Either copy `deckhand.env.example` and set `DECKHAND_API_KEY` there, or symlink it to your shell's environment.
+The plugin reads its `DECKHAND_URL` and `DECKHAND_API_KEY` from the same `config.toml` the service uses — put them under a `[client]` section. If you don't have a service checkout (OpenDeck-plugin-only install), put the file at `~/.config/deckhand/config.toml`; the service and the plugin both look there as a fallback. See `config.example.toml` for the section shape. The `DECKHAND_URL` / `DECKHAND_API_KEY` env vars override the file if you'd rather set them at the shell level.
 
 **4. Restart OpenDeck.** A "Deckhand" category appears in the action list.
 
@@ -161,7 +161,7 @@ Connection settings come from `--url` / `--api-key`, then `DECKHAND_URL` / `DECK
 | Plugin modules | `DECKHAND_PLUGINS` | none (opt in via `config.toml`) |
 | State persistence file | `DECKHAND_STATE_FILE` | none (in-memory) |
 | Event log | `DECKHAND_EVENT_LOG_ENABLED` / `DECKHAND_EVENT_LOG` | off; `.deckhand/events.log` |
-| Config file path | `DECKHAND_CONFIG_FILE` | `./config.toml` if present |
+| Config file path | `DECKHAND_CONFIG_FILE` | `./config.toml`, then `~/.config/deckhand/config.toml` |
 
 `config.example.toml` is the annotated reference for every section.
 
