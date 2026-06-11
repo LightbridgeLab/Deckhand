@@ -6,7 +6,7 @@ This guide explains how to create **Deckhand Core plugins** — Python modules t
 
 ## Introduction
 
-Deckhand Core plugins are Python modules that register actions and signals with the service. Actions are named commands that can be triggered via `POST /actions/{name}` (e.g., from an OpenDeck button press). Signals ingest external events via `POST /signals/webhook/{name}` (e.g., webhooks from cameras or sensors). For end-to-end recipes (Home Assistant webhooks, RSS polling), see **[Integrations](INTEGRATIONS.md)**.
+Deckhand Core plugins are Python modules that register actions and signals with the service. Actions are named commands that can be triggered via `POST /actions/{name}` (e.g., from an OpenDeck button press). Signals ingest external events via `POST /signals/webhook/{name}` (e.g., webhooks from cameras or sensors).
 
 ### Architecture Overview
 
@@ -116,8 +116,6 @@ registry.actions.register(
 The `payload_schema` helps clients understand what fields are expected. Use descriptive action names with namespaces (e.g., `plugin_name.action_name`).
 
 ## Registering Signals
-
-> **External systems:** Push sources (Home Assistant, webhooks) and pull sources (RSS) are documented in [INTEGRATIONS.md](INTEGRATIONS.md).
 
 Signals have the same handler signature as actions:
 
@@ -299,7 +297,7 @@ DECKHAND_PLUGINS=my_plugin,another_plugin
 **Config File (`config.toml`):**
 ```toml
 [plugins]
-modules = ["deckhand.plugins.builtin", "my_plugin"]
+modules = ["my_plugin"]
 ```
 
 **Python Settings:**
@@ -346,13 +344,4 @@ def test_my_plugin():
     await registry.actions.run("my.action", {"key": "value"})
 ```
 
-See `tests/test_plugins.py` for more examples.
-
-## Example Plugin
-
-See `examples/example_plugin.py` for a complete annotated example demonstrating:
-- Multiple actions with validation
-- Multiple signals with state updates
-- Event emission
-- Metadata registration
-- TTL usage
+See `tests/test_plugins.py` and `src/deckhand/plugins/claude_code_usage.py` for working plugin patterns — the latter shows a real poller plugin with background-task lifecycle management via `registry.on_shutdown(...)`.

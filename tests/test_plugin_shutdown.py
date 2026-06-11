@@ -6,6 +6,7 @@ import asyncio
 
 import pytest
 
+from deckhand.plugins.capabilities import build_scoped_registry
 from deckhand.plugins.claude_code_usage import _BACKGROUND_TASKS
 from deckhand.plugins.claude_code_usage import register as ccu_register
 from deckhand.plugins.registry import PluginRegistry
@@ -50,6 +51,24 @@ async def test_run_shutdown_runs_all_hooks_even_if_one_fails(
 
 async def test_no_hooks_registered_is_noop(plugin_registry: PluginRegistry) -> None:
     await plugin_registry.run_shutdown_hooks()  # must not raise
+
+
+@pytest.mark.parametrize("capability", ["read-only", "state-only"])
+async def test_scoped_registry_forwards_shutdown_hook_to_base(
+    plugin_registry: PluginRegistry, capability: str
+) -> None:
+    """Hooks registered on a scoped registry must run when the base
+    registry's run_shutdown_hooks is invoked — otherwise poller plugins
+    loaded under reduced capability leak their background tasks at shutdown."""
+    scoped = build_scoped_registry(plugin_registry, capability)  # type: ignore[arg-type]
+    ran: list[str] = []
+
+    async def hook() -> None:
+        ran.append("scoped")
+
+    scoped.on_shutdown(hook)
+    await plugin_registry.run_shutdown_hooks()
+    assert ran == ["scoped"]
 
 
 async def test_claude_code_usage_plugin_registers_shutdown_hook(

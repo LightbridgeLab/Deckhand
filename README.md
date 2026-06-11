@@ -35,7 +35,6 @@ The end state is one Stream Deck button that shows how many tokens you've spent 
 ```toml
 [plugins]
 modules = [
-  "deckhand.plugins.builtin",
   "deckhand.plugins.claude_code_usage",
 ]
 ```
