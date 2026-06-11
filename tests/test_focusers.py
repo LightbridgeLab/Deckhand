@@ -6,6 +6,7 @@ import subprocess
 from unittest.mock import patch
 
 from deckhand.agents.mock import MockAgent
+from deckhand.focusers.cursor import make_cursor_focuser
 from deckhand.focusers.iterm import _build_applescript, make_iterm_focuser
 from deckhand.orchestrator.focusers import FocuserRegistry
 from deckhand.orchestrator.manager import Orchestrator
@@ -245,5 +246,63 @@ async def test_iterm_focuser_swallows_timeout() -> None:
     with patch(
         "subprocess.run",
         side_effect=subprocess.TimeoutExpired(cmd="osascript", timeout=5),
+    ):
+        await focuser()  # must not raise
+
+
+# ---------------------------------------------------------- Cursor focuser ---
+
+
+async def test_cursor_focuser_invokes_open_with_workspace_path() -> None:
+    focuser = make_cursor_focuser("/Users/me/projects/alpha")
+
+    completed = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+    with patch("subprocess.run", return_value=completed) as run:
+        await focuser()
+
+    assert run.call_count == 1
+    args, kwargs = run.call_args
+    cmd = args[0]
+    assert cmd == ["open", "-a", "Cursor", "/Users/me/projects/alpha"]
+    assert kwargs.get("timeout") == 5
+
+
+async def test_cursor_focuser_without_workspace_just_activates_app() -> None:
+    """No project_root → just `open -a Cursor` with no path argument.
+
+    This is the fallback for hook payloads that omitted cwd. The expected
+    behaviour is "raise Cursor's frontmost window" rather than a no-op,
+    because doing nothing produces a worse UX than activating the app.
+    """
+    focuser = make_cursor_focuser(None)
+
+    completed = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+    with patch("subprocess.run", return_value=completed) as run:
+        await focuser()
+
+    cmd = run.call_args.args[0]
+    assert cmd == ["open", "-a", "Cursor"]
+
+
+async def test_cursor_focuser_swallows_nonzero_exit() -> None:
+    focuser = make_cursor_focuser("/tmp/p")
+    completed = subprocess.CompletedProcess(
+        args=[], returncode=1, stdout="", stderr="Cursor not found"
+    )
+    with patch("subprocess.run", return_value=completed):
+        await focuser()  # must not raise
+
+
+async def test_cursor_focuser_swallows_missing_open_binary() -> None:
+    focuser = make_cursor_focuser("/tmp/p")
+    with patch("subprocess.run", side_effect=FileNotFoundError):
+        await focuser()  # must not raise
+
+
+async def test_cursor_focuser_swallows_timeout() -> None:
+    focuser = make_cursor_focuser("/tmp/p")
+    with patch(
+        "subprocess.run",
+        side_effect=subprocess.TimeoutExpired(cmd="open", timeout=5),
     ):
         await focuser()  # must not raise

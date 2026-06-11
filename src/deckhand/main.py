@@ -27,6 +27,7 @@ from deckhand.agents.pending_input import PendingInputTracker
 from deckhand.agents.summary import update_cursor_summary
 from deckhand.config.settings import Settings
 from deckhand.event_log import EventLogger
+from deckhand.focusers.cursor import make_cursor_focuser
 from deckhand.focusers.iterm import make_iterm_focuser
 from deckhand.logging_config import configure_logging
 from deckhand.metrics import Metrics
@@ -598,6 +599,7 @@ async def cursor_hook(payload: CursorHookPayload) -> dict[str, object]:
             title=payload.title,
         )
         orchestrator.register_agent(agent)
+        orchestrator.register_focuser(agent_id, make_cursor_focuser(payload.cwd))
         await orchestrator.event_bus.emit(
             build_event(
                 "agent.registered",
@@ -609,6 +611,11 @@ async def cursor_hook(payload: CursorHookPayload) -> dict[str, object]:
         agent = existing  # type: ignore[assignment]
         if payload.cwd and agent.project_root != payload.cwd:
             agent.project_root = payload.cwd
+            # Rebind the focuser so a workspace switch mid-session takes
+            # effect on the next focus invocation. Building the closure is
+            # microsecond-cheap; mirrors the late-binding pattern in the
+            # Claude Code hook handler above.
+            orchestrator.register_focuser(agent_id, make_cursor_focuser(payload.cwd))
         if payload.title and getattr(agent, "title", None) != payload.title:
             agent.title = payload.title  # type: ignore[attr-defined]
 
