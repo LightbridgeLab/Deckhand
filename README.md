@@ -1,136 +1,71 @@
 # Deckhand
 
-Deckhand is a local-first orchestration service for Stream Deck hardware. It pairs with [OpenDeck](https://github.com/niclasmattsson/OpenDeck) — OpenDeck handles hardware, buttons, and profiles; Deckhand adds agent monitoring, live data widgets, and signal-driven automation.
+> Tactile Stream Deck / OpenDeck control for Claude Code, Cursor, and your dev shell. Local-first, Python plugins, no cloud.
+
+Deckhand is a local service that watches your AI coding sessions and turns one Stream Deck button into a real action: jump to whichever Claude session needs input, show how many tokens you've burned this week, fire a project-startup macro. It runs on `127.0.0.1`, talks to [OpenDeck](https://github.com/niclasmattsson/OpenDeck) (and soon the official Elgato Stream Deck), and stays out of your way the rest of the time.
+
+It is *not* a generic home-automation hub, a cross-device button platform, or a marketplace. If you're looking for that, [Bitfocus Companion](https://bitfocus.io/companion) or [Touch Portal](https://www.touch-portal.com/) probably fit better.
+
+## Scope (v0.3)
+
+- **macOS-first.** The iTerm focuser uses AppleScript via `osascript`. Linux + Windows ports are possible but unbuilt.
+- **OpenDeck-first.** An Elgato Stream Deck plugin port is planned. Until then, OpenDeck is the only client.
+- **iTerm-first** for the focus loop. Claude sessions outside iTerm (Terminal.app, Alacritty, plain ssh) are still tracked — they just can't be focused yet.
+- **One real provider so far:** Claude Code. Cursor adapter ships in the baseline but the focus integration and usage plugin are Claude-only today. Cursor focus is tracked at [#24](https://github.com/LightbridgeLab/Deckhand/issues/24).
 
 ## Install
 
-**Prerequisites:** Python 3.11+, [uv](https://docs.astral.sh/uv/) (recommended) or pip.
+Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/).
 
 ```bash
-git clone <this-repo> && cd Deckhand
-uv sync --all-extras   # installs all dependencies into .venv
+git clone https://github.com/LightbridgeLab/Deckhand && cd Deckhand
+uv sync --all-extras
+cp config.example.toml config.toml      # edit the [plugins] block — see Quick start below
+make dev                                 # starts the service on http://127.0.0.1:8000
 ```
 
-<details><summary>pip alternative</summary>
+On first start the service auto-generates a write-scoped API key and logs it. Set `[auth] api_keys` in `config.toml` to persist a key you control.
+
+## Quick start: live Claude Code token count on a button
+
+The end state is one Stream Deck button that shows how many tokens you've spent in the last 5 hours, updating live as Claude works.
+
+**1. Enable the usage plugin** in `config.toml`:
+
+```toml
+[plugins]
+modules = [
+  "deckhand.plugins.builtin",
+  "deckhand.plugins.claude_code_usage",
+]
+```
+
+Optional — give it caps so the button can show a percentage too:
+
+```toml
+[plugins.claude_code_usage]
+session_token_cap = 500000
+week_token_cap = 10000000
+week_sonnet_token_cap = 5000000
+```
+
+**2. Install the Claude Code hooks** so Deckhand can see your sessions:
 
 ```bash
-pip install -e ".[test]"
+# Merge examples/claude_code_hooks.json into ~/.claude/settings.json
+# (the "hooks" block; existing hooks are preserved).
 ```
-</details>
 
-## Quick start (no Stream Deck needed)
-
-You can try Deckhand without any hardware — the Core service runs standalone with two mock agents.
-
-**1. Configure auth** (recommended before first run):
+In your shell profile, export the Deckhand URL and the API key from `config.toml`:
 
 ```bash
-cp config.example.toml config.toml
-cp .env.example .env
-# Edit both files and set the same DECKHAND_API_KEY / [auth] api_keys value
+export DECKHAND_URL=http://127.0.0.1:8000
+export DECKHAND_API_KEY=<your-key>
 ```
 
-If you skip this step, Core auto-generates a temporary write key on startup and logs it to the console.
+The hook commands also forward `$ITERM_SESSION_ID` automatically — that's what enables the focus button later.
 
-**2. Start the service:**
-
-```bash
-make dev
-# or: uv run uvicorn deckhand.main:app --app-dir src --reload
-```
-
-**3. List the mock agents:**
-
-```bash
-source .env   # if you created one
-curl -H "Authorization: Bearer $DECKHAND_API_KEY" http://127.0.0.1:8000/agents
-```
-
-You should see `mock-1` and `mock-2`, both `"status": "idle"`.
-
-**4. Start an agent and watch it work:**
-
-```bash
-# Start mock-1 — it will run for ~0.5s, then wait for input
-curl -X POST -H "Authorization: Bearer $DECKHAND_API_KEY" \
-  http://127.0.0.1:8000/agents/mock-1/start
-
-# Check status (should be "awaiting_input" after ~0.5s)
-curl -H "Authorization: Bearer $DECKHAND_API_KEY" http://127.0.0.1:8000/agents
-
-# Provide input — agent finishes and returns to idle (~0.5s after input)
-curl -X POST -H "Authorization: Bearer $DECKHAND_API_KEY" \
-  -H "Content-Type: application/json" -d '{"text": "hello"}' \
-  http://127.0.0.1:8000/agents/mock-1/input
-```
-
-**5. Try the state store:**
-
-```bash
-# Send a signal that writes state with a 30s TTL
-curl -X POST -H "Authorization: Bearer $DECKHAND_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"key": "camera.front_door.motion", "active": true, "ttl_seconds": 30}' \
-  http://127.0.0.1:8000/signals/webhook/camera.motion
-
-# Read it back
-curl -H "Authorization: Bearer $DECKHAND_API_KEY" \
-  http://127.0.0.1:8000/state/camera.front_door.motion
-```
-
-**6. Run the tests:**
-
-```bash
-make check
-```
-
-All Core tests should pass (currently 81+).
-
-## CLI
-
-With `make dev` running in another terminal, use the `deckhand` CLI to inspect and drive the service:
-
-```bash
-uv run deckhand --help
-
-# State
-uv run deckhand state list
-uv run deckhand state get camera.front_door.motion
-uv run deckhand state watch                        # live state.changed stream
-
-# Events (live WebSocket or on-disk JSONL log)
-uv run deckhand events tail
-uv run deckhand events tail --type agent.status_changed --type state.changed
-uv run deckhand events tail --from-log             # replay from .deckhand/events.log
-
-# Actions / signals
-uv run deckhand actions list
-uv run deckhand actions call agent.start --payload '{"agent_id": "mock-1"}'
-uv run deckhand signals list
-uv run deckhand signals fire camera.motion --payload '{"key": "camera.front_door.motion", "active": true, "ttl_seconds": 30}'
-
-# Agents
-uv run deckhand agents list
-uv run deckhand agents start mock-1
-uv run deckhand agents input mock-1 "hello"
-
-# Simulate Claude Code / Cursor hooks without a live session
-cat examples/claude_code_hooks.json | jq '.hooks.SessionStart[0]' | uv run deckhand hooks simulate claude-code
-```
-
-The CLI reads `DECKHAND_URL` and `DECKHAND_API_KEY` from the environment, then falls back to `config.toml`, and finally to `http://127.0.0.1:8000`. Override with `--url` / `--api-key`.
-
-**Event log:** turn on `[event_log] enabled = true` in `config.toml` (or set `DECKHAND_EVENT_LOG_ENABLED=1`) to append every event as JSONL to `.deckhand/events.log`. Off by default. `deckhand events tail --from-log` reads it.
-
-**Cursor Stream Deck layouts:** see [docs/CURSOR_STREAM_DECK_PROFILES.md](docs/CURSOR_STREAM_DECK_PROFILES.md).
-
-## Connect to a Stream Deck
-
-Once you're comfortable with the API and CLI, add hardware via OpenDeck:
-
-**1. Install [OpenDeck](https://github.com/niclasmattsson/OpenDeck)** for your platform.
-
-**2. Install the Deckhand plugin:**
+**3. Install OpenDeck and the Deckhand plugin:**
 
 ```bash
 # macOS
@@ -142,54 +77,120 @@ cp -r opendeck-plugin/com.deckhand.plugin.sdPlugin \
   ~/.config/OpenDeck/Plugins/
 ```
 
-**3. Configure the plugin** to use the same API key as Core:
+OpenDeck's plugin loader expects a `deckhand.env` file next to the plugin. Either copy `deckhand.env.example` and set `DECKHAND_API_KEY` there, or symlink it to your shell's environment.
 
-```bash
-cd ~/Library/Application\ Support/OpenDeck/Plugins/com.deckhand.plugin.sdPlugin
-cp deckhand.env.example deckhand.env
-# Edit deckhand.env — set DECKHAND_API_KEY to match config.toml / .env
-```
+**4. Restart OpenDeck.** A "Deckhand" category appears in the action list.
 
-The plugin's `run.sh` creates a local `.venv` and installs `aiohttp` + `websockets` on first launch.
+**5. Bind a Data Widget to a button:**
 
-**4. Restart OpenDeck.** A "Deckhand" category appears with six actions:
+- Drag **Data Widget** onto a button.
+- In the Property Inspector, set the state key to `usage.claude_code.session_tokens` and the display format to `number` (or `percentage` if you set caps in step 1).
+- Open Claude Code in iTerm and start chatting. Within 30 seconds the button updates with your real token count.
+
+That's the full loop: install → enable one plugin → install hooks → bind one button.
+
+## Features
+
+### Live usage widgets — `usage.claude_code.*`
+
+The `claude_code_usage` plugin polls `~/.claude/projects/**/*.jsonl` and publishes three state keys, each with the shape `{ label, current, max, percent, unit, updated_at }`:
+
+| state key | window | model filter |
+|---|---|---|
+| `usage.claude_code.session_tokens` | last 5 hours | all |
+| `usage.claude_code.week_tokens` | last 7 days | all |
+| `usage.claude_code.week_sonnet_tokens` | last 7 days | Sonnet only |
+
+Bind any of them to a Data Widget button. `max` and `percent` stay `null` unless you configure caps in `config.toml` — Anthropic's actual cap numbers aren't recorded anywhere on disk, so the plugin can compute totals authoritatively but only your configuration knows the denominator. Token counting is `input + cache_creation + output` (cache reads excluded). See the module docstring for the full set of heuristics.
+
+### Pending-input focus
+
+While the hooks are running, two state keys aggregate "needs input" across every local Claude Code session:
+
+- `agents.pending_input_count` → `{ "count": N }` for a numeric Data Widget
+- `agents.pending_input` → `{ "agent_ids": [...] }` (oldest first) for advanced use
+
+Bind a **Run Action** button to `agents.focus_next_pending` (no payload). On press it pops the oldest pending session and brings iTerm to that tab. Press again to jump to the next. Empty queue → no-op success.
+
+Sessions outside iTerm still appear in the count but the focus action skips them. Cursor focus and browser focus are tracked at [#24](https://github.com/LightbridgeLab/Deckhand/issues/24) and [#25](https://github.com/LightbridgeLab/Deckhand/issues/25).
+
+### Macros — coming soon
+
+A button that opens iTerm tabs, runs `claude`, and fires a `/status` slash command in one press. Tracked at [#26](https://github.com/LightbridgeLab/Deckhand/issues/26). Not shipped yet.
+
+## OpenDeck plugin
+
+Six actions install with the plugin. Drag them onto buttons from the Deckhand category:
 
 | Action | What it does |
-|--------|-------------|
-| **Agent Status** | Monitor + interact with an agent (start/cancel/input) |
-| **Agent Slot** | Dynamic slot for priority-ranked agents (Cursor) |
-| **Data Widget** | Display a live state value on a button |
-| **Run Action** | Execute any Deckhand action on press |
-| **Signal Trigger** | Fire a Deckhand signal on press |
-| **Agent Dashboard** | Agent summary; press focuses attention |
+|---|---|
+| **Data Widget** | Display a live state value (numeric, percentage, boolean, text). |
+| **Run Action** | Execute any Deckhand action on press (e.g. `agents.focus_next_pending`). |
+| **Signal Trigger** | Fire a Deckhand signal on press. |
+| **Agent Status** | Monitor + start/cancel/input a specific agent. |
+| **Agent Slot** | Dynamic slot for priority-ranked agents. *Likely retired by #29 — `agents.focus_next_pending` covers most use cases.* |
+| **Agent Dashboard** | Aggregate agent summary on one button. *Same — being reconsidered under #29.* |
 
-Drag **Agent Status** onto a button, pick `mock-1` in the Property Inspector, and press it to start the agent.
+See [opendeck-plugin/README.md](opendeck-plugin/README.md) for property-inspector internals.
+
+## CLI
+
+`make dev` starts the service. In another shell, the `deckhand` CLI talks to it over the same HTTP/WebSocket API as the OpenDeck plugin:
+
+```bash
+uv run deckhand --help
+uv run deckhand state list
+uv run deckhand state watch usage.claude_code.session_tokens
+uv run deckhand events tail --type agent.status_changed --type state.changed
+uv run deckhand actions list
+uv run deckhand actions call agents.focus_next_pending
+uv run deckhand agents list
+cat examples/claude_code_hooks.json | jq '.hooks.SessionStart[0]' | uv run deckhand hooks simulate claude-code
+```
+
+Connection settings come from `--url` / `--api-key`, then `DECKHAND_URL` / `DECKHAND_API_KEY`, then `config.toml`. The on-disk event log is opt-in; turn it on with `[event_log] enabled = true` to enable `deckhand events tail --from-log`.
 
 ## Configuration
 
-Copy `config.example.toml` to `config.toml`, or use environment variables:
+`config.toml` is the source of truth. Environment variables override individual keys:
 
 | Setting | Env var | Default |
-|---------|---------|---------|
+|---|---|---|
 | Listen host | `DECKHAND_HOST` | `127.0.0.1` |
 | Listen port | `DECKHAND_PORT` | `8000` |
+| API key | `DECKHAND_API_KEY` | auto-generated write key (logged at startup) |
 | Plugin modules | `DECKHAND_PLUGINS` | `deckhand.plugins.builtin` |
 | State persistence file | `DECKHAND_STATE_FILE` | none (in-memory) |
-| API key | `DECKHAND_API_KEY` | auto-generated write key (logged at startup) |
-| Event log | `DECKHAND_EVENT_LOG_ENABLED` / `DECKHAND_EVENT_LOG` | off; path defaults to `.deckhand/events.log` |
+| Event log | `DECKHAND_EVENT_LOG_ENABLED` / `DECKHAND_EVENT_LOG` | off; `.deckhand/events.log` |
 | Config file path | `DECKHAND_CONFIG_FILE` | `./config.toml` if present |
 
-The OpenDeck plugin reads `DECKHAND_URL` (default `http://localhost:8000`) and `DECKHAND_API_KEY` from `deckhand.env` (loaded by `run.sh`).
+`config.example.toml` is the annotated reference for every section.
 
 ## Documentation
 
-- **[Plugin Guide](docs/PLUGIN_GUIDE.md)** — Extend Deckhand Core with custom actions and signals
-- **[Integrations](docs/INTEGRATIONS.md)** — Home Assistant webhook and RSS poller patterns (signals → state → Data Widget)
-- **[OpenDeck Plugin](opendeck-plugin/README.md)** — Install and develop the OpenDeck bridge
-- **[API Reference](docs/API.md)** — HTTP API documentation
-- **[Event Schema](docs/EVENTS.md)** — Event types and schema reference
-- **[Example Plugin](examples/example_plugin.py)** — Complete plugin with actions, signals, and state
+- **[OpenDeck plugin internals](opendeck-plugin/README.md)** — install + develop the bridge.
+- **[Plugin Guide](docs/PLUGIN_GUIDE.md)** — write your own action / signal / state plugin.
+- **[Cursor Stream Deck profiles](docs/CURSOR_STREAM_DECK_PROFILES.md)** — layout patterns for Cursor sessions.
+- **[API Reference](docs/API.md)** — HTTP routes.
+- **[Event Schema](docs/EVENTS.md)** — event types and payload shapes.
+
+## Run the tests
+
+```bash
+make check         # ruff lint + format + pytest, currently 196 passing
+```
+
+## Roadmap
+
+The shipped feature surface is small by design. Tracked work:
+
+- [#24](https://github.com/LightbridgeLab/Deckhand/issues/24) — Cursor focus (blocked on Cursor exposing more session metadata).
+- [#25](https://github.com/LightbridgeLab/Deckhand/issues/25) — Browser-tab focus for Claude / Gemini web.
+- [#26](https://github.com/LightbridgeLab/Deckhand/issues/26) — Macro runner with iTerm primitives.
+- [#22](https://github.com/LightbridgeLab/Deckhand/issues/22) — Progress-ring image format for usage buttons.
+- [#28](https://github.com/LightbridgeLab/Deckhand/issues/28) — Hero screenshots + demo video.
+- [#29](https://github.com/LightbridgeLab/Deckhand/issues/29) — Cleanup pass: retire Agent Slot / Dashboard if `agents.focus_next_pending` covers their use cases, plug the plugin-shutdown hook leak called out in `claude_code_usage.py`.
 
 ## License
 
-[Add your license here]
+[TBD]
