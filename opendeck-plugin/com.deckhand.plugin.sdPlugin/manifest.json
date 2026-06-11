@@ -2,7 +2,7 @@
   "Name": "Deckhand",
   "Author": "Deckhand",
   "Description": "Agent monitoring, interactive widgets, and signal-driven buttons",
-  "Version": "0.2.0",
+  "Version": "0.3.0",
   "Icon": "assets/icon",
   "Category": "Deckhand",
   "CodePathMac": "run.sh",
@@ -68,6 +68,20 @@
       "PropertyInspectorPath": "propertyInspector/agent_dashboard.html",
       "States": [
         { "Image": "assets/dashboard" }
+      ]
+    },
+    {
+      "UUID": "com.deckhand.agent.slot",
+      "Name": "Agent Slot",
+      "Icon": "assets/agent-running",
+      "Tooltip": "Dynamic slot bound to a priority-ranked agent",
+      "Controllers": ["Keypad"],
+      "PropertyInspectorPath": "propertyInspector/agent_slot.html",
+      "States": [
+        { "Image": "assets/agent-idle", "Name": "Idle", "Title": "Idle" },
+        { "Image": "assets/agent-running", "Name": "Running", "Title": "Running" },
+        { "Image": "assets/agent-input", "Name": "Awaiting Input", "Title": "Input" },
+        { "Image": "assets/agent-error", "Name": "Error", "Title": "Error" }
       ]
     }
   ]

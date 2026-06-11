@@ -10,17 +10,67 @@
     <div class="sdpi-heading">Agent Dashboard</div>
 
     <div class="sdpi-info">
-      Displays a summary of all Deckhand agents on a single button.
-      The title shows agent counts by status.
+      Displays a summary of Deckhand agents on a single button.
+      Press focuses the highest-priority agent when attention is needed.
+    </div>
+
+    <div class="sdpi-item">
+      <div class="sdpi-item-label">Agent filter</div>
+      <div class="sdpi-item-value">
+        <input type="text" id="agent_filter" value="*" placeholder="cursor or *" />
+      </div>
+    </div>
+
+    <div class="sdpi-item">
+      <div class="sdpi-item-label">Default Input</div>
+      <div class="sdpi-item-value">
+        <input type="text" id="default_input" placeholder="For awaiting_input agents" />
+      </div>
     </div>
 
     <div class="sdpi-info">
-      <strong>Legend:</strong> > running &bull; ? awaiting input &bull; ! error &bull; - idle
-    </div>
-
-    <div class="sdpi-info">
-      Press the button to refresh the view.
+      <strong>Legend:</strong> &gt; running &bull; ? awaiting input &bull; ! error &bull; - idle
     </div>
   </div>
+
+  <script>
+    let websocket = null;
+    let pluginUUID = null;
+    let actionInfo = null;
+    let settings = {};
+
+    function connectElgatoStreamDeckSocket(port, uuid, registerEvent, info, actionInfoStr) {
+      pluginUUID = uuid;
+      actionInfo = JSON.parse(actionInfoStr);
+      settings = actionInfo.payload.settings || {};
+      document.getElementById("agent_filter").value = settings.agent_filter || "*";
+      document.getElementById("default_input").value = settings.default_input || "";
+
+      websocket = new WebSocket("ws://127.0.0.1:" + port);
+      websocket.onopen = function() {
+        websocket.send(JSON.stringify({
+          event: registerEvent,
+          uuid: pluginUUID
+        }));
+      };
+    }
+
+    function saveSettings() {
+      settings = {
+        agent_filter: document.getElementById("agent_filter").value || "*",
+        default_input: document.getElementById("default_input").value || "",
+      };
+      if (websocket && websocket.readyState === WebSocket.OPEN) {
+        websocket.send(JSON.stringify({
+          event: "setSettings",
+          context: actionInfo.context,
+          payload: settings
+        }));
+      }
+    }
+
+    document.getElementById("agent_filter").addEventListener("input", saveSettings);
+    document.getElementById("default_input").addEventListener("input", saveSettings);
+  </script>
 </body>
 </html>

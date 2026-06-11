@@ -111,6 +111,9 @@ class WidgetHandler:
 
 def _format_value(value: Any, fmt: str) -> str:
     """Format a state value for display on a button."""
+    if fmt == "summary" and isinstance(value, dict) and "title" in value:
+        return str(value["title"])[:12]
+
     if isinstance(value, dict):
         # For dicts, try to find a single scalar value
         if len(value) == 1:

@@ -6,7 +6,7 @@ This guide explains how to create **Deckhand Core plugins** — Python modules t
 
 ## Introduction
 
-Deckhand Core plugins are Python modules that register actions and signals with the service. Actions are named commands that can be triggered via `POST /actions/{name}` (e.g., from an OpenDeck button press). Signals ingest external events via `POST /signals/webhook/{name}` (e.g., webhooks from cameras or sensors).
+Deckhand Core plugins are Python modules that register actions and signals with the service. Actions are named commands that can be triggered via `POST /actions/{name}` (e.g., from an OpenDeck button press). Signals ingest external events via `POST /signals/webhook/{name}` (e.g., webhooks from cameras or sensors). For end-to-end recipes (Home Assistant webhooks, RSS polling), see **[Integrations](INTEGRATIONS.md)**.
 
 ### Architecture Overview
 
@@ -116,6 +116,8 @@ registry.actions.register(
 The `payload_schema` helps clients understand what fields are expected. Use descriptive action names with namespaces (e.g., `plugin_name.action_name`).
 
 ## Registering Signals
+
+> **External systems:** Push sources (Home Assistant, webhooks) and pull sources (RSS) are documented in [INTEGRATIONS.md](INTEGRATIONS.md).
 
 Signals have the same handler signature as actions:
 

@@ -17,11 +17,16 @@ from fastapi import (
 )
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
+from deckhand.agents.claude_code import ClaudeCodeAgent
+from deckhand.agents.cursor import CursorAgent
 from deckhand.agents.mock import MockAgent
+from deckhand.agents.summary import update_cursor_summary
 from deckhand.config.settings import Settings
+from deckhand.event_log import EventLogger
 from deckhand.logging_config import configure_logging
 from deckhand.metrics import Metrics
 from deckhand.orchestrator.actions import ActionRegistry
@@ -82,6 +87,9 @@ async def lifespan(app: FastAPI):
     logger.info(f"  State file: {settings.state_file_path or 'none (in-memory only)'}")
     logger.info(f"  API keys: {len(settings.api_keys)} configured")
     logger.info(f"  Rate limit: {settings.rate_limit_rpm} req/min")
+    logger.info(
+        f"  Event log: {'enabled @ ' + str(settings.event_log_path) if settings.event_log_enabled else 'disabled'}"
+    )
     logger.info(f"  Plugins: {', '.join(settings.plugin_modules)}")
 
     if settings._generated_key:
@@ -109,7 +117,11 @@ async def lifespan(app: FastAPI):
     )
 
     # Initialize registries
-    action_registry = ActionRegistry(orchestrator, metrics=metrics)
+    action_registry = ActionRegistry(
+        orchestrator,
+        metrics=metrics,
+        event_bus=orchestrator.event_bus,
+    )
     signal_registry = SignalRegistry(metrics=metrics)
     plugin_registry = PluginRegistry(
         actions=action_registry,
@@ -124,6 +136,11 @@ async def lifespan(app: FastAPI):
     logger.info(
         f"Loaded {len(action_registry.list_actions())} actions and {len(signal_registry.list_signals())} signals"
     )
+
+    if settings.event_log_enabled:
+        event_logger = EventLogger(settings.event_log_path)
+        orchestrator.event_bus.add_listener(event_logger)
+        logger.info("Event log writing to %s", event_logger.path)
 
     logger.info("Deckhand service started")
 
@@ -255,6 +272,29 @@ class AgentContextPayload(BaseModel):
 
     project_root: str | None = None
     active_file: str | None = None
+
+
+class ClaudeCodeHookPayload(BaseModel):
+    """Payload pushed by a Claude Code hook (JSON piped to the hook command).
+
+    Mirrors the schema Claude Code writes to hook stdin. Unknown fields are
+    ignored so future hook additions do not break the endpoint.
+    """
+
+    session_id: str
+    hook_event_name: str
+    cwd: str | None = None
+    transcript_path: str | None = None
+
+
+class CursorHookPayload(BaseModel):
+    """Payload pushed by a Cursor IDE hook (JSON piped to the hook command)."""
+
+    session_id: str
+    hook_event_name: str
+    cwd: str | None = None
+    title: str | None = None
+    deckhand_status: str | None = None
 
 
 class SignalPayload(BaseModel):
@@ -441,6 +481,132 @@ async def register_agent(payload: AgentRegisterPayload) -> dict[str, object]:
     )
     orchestrator.register_agent(agent)
     return agent.as_dict()
+
+
+def _claude_code_agent_id(session_id: str) -> str:
+    """Derive a stable agent id from a Claude Code session id."""
+    short = session_id[:8] if len(session_id) >= 8 else session_id
+    return f"claude-code-{short}"
+
+
+@app.post("/agents/claude-code/hook", dependencies=[Depends(require_write)])
+async def claude_code_hook(payload: ClaudeCodeHookPayload) -> dict[str, object]:
+    """Receive a Claude Code hook event and reflect it onto a ClaudeCodeAgent.
+
+    On first sighting of a ``session_id`` a new ClaudeCodeAgent is registered
+    with the orchestrator using ``cwd`` as ``project_root``. Subsequent hook
+    events update the agent's status. ``SessionEnd`` unregisters the agent.
+    """
+    if orchestrator is None:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+
+    agent_id = _claude_code_agent_id(payload.session_id)
+    existing = orchestrator.get_agent(agent_id)
+
+    if payload.hook_event_name == "SessionEnd":
+        if existing is not None:
+            orchestrator.unregister_agent(agent_id)
+            await orchestrator.event_bus.emit(
+                build_event(
+                    "agent.unregistered",
+                    {"kind": "agent", "id": agent_id},
+                    {"agent_id": agent_id, "reason": "session_end"},
+                )
+            )
+        return {"status": "unregistered", "agent_id": agent_id}
+
+    if existing is None:
+        agent = ClaudeCodeAgent(
+            agent_id=agent_id,
+            session_id=payload.session_id,
+            project_root=payload.cwd,
+        )
+        orchestrator.register_agent(agent)
+        await orchestrator.event_bus.emit(
+            build_event(
+                "agent.registered",
+                {"kind": "agent", "id": agent_id},
+                {"agent": agent.as_dict()},
+            )
+        )
+    else:
+        agent = existing  # type: ignore[assignment]
+        if payload.cwd and agent.project_root != payload.cwd:
+            agent.project_root = payload.cwd
+
+    if not isinstance(agent, ClaudeCodeAgent):
+        raise HTTPException(
+            status_code=409,
+            detail=f"agent id {agent_id} exists but is not a ClaudeCodeAgent",
+        )
+
+    await agent.apply_hook_event(payload.hook_event_name)
+    return {"status": "ok", "agent": agent.as_dict()}
+
+
+def _cursor_agent_id(session_id: str) -> str:
+    """Derive a stable agent id from a Cursor session id."""
+    short = session_id[:8] if len(session_id) >= 8 else session_id
+    return f"cursor-{short}"
+
+
+@app.post("/agents/cursor/hook", dependencies=[Depends(require_write)])
+async def cursor_hook(payload: CursorHookPayload) -> dict[str, object]:
+    """Receive a Cursor IDE hook event and reflect it onto a CursorAgent."""
+    if orchestrator is None:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+
+    agent_id = _cursor_agent_id(payload.session_id)
+    existing = orchestrator.get_agent(agent_id)
+    event_name = payload.hook_event_name
+
+    if event_name == "sessionEnd":
+        if existing is not None:
+            orchestrator.unregister_agent(agent_id)
+            await orchestrator.event_bus.emit(
+                build_event(
+                    "agent.unregistered",
+                    {"kind": "agent", "id": agent_id},
+                    {"agent_id": agent_id, "reason": "session_end"},
+                )
+            )
+        await update_cursor_summary(orchestrator)
+        return {"status": "unregistered", "agent_id": agent_id}
+
+    if existing is None:
+        agent = CursorAgent(
+            agent_id=agent_id,
+            session_id=payload.session_id,
+            project_root=payload.cwd,
+            title=payload.title,
+        )
+        orchestrator.register_agent(agent)
+        await orchestrator.event_bus.emit(
+            build_event(
+                "agent.registered",
+                {"kind": "agent", "id": agent_id},
+                {"agent": agent.as_dict()},
+            )
+        )
+    else:
+        agent = existing  # type: ignore[assignment]
+        if payload.cwd and agent.project_root != payload.cwd:
+            agent.project_root = payload.cwd
+        if payload.title and getattr(agent, "title", None) != payload.title:
+            agent.title = payload.title  # type: ignore[attr-defined]
+
+    if not isinstance(agent, CursorAgent):
+        raise HTTPException(
+            status_code=409,
+            detail=f"agent id {agent_id} exists but is not a CursorAgent",
+        )
+
+    await agent.apply_hook_event(
+        event_name,
+        deckhand_status=payload.deckhand_status,
+    )
+    await update_cursor_summary(orchestrator)
+    return {"status": "ok", "agent": agent.as_dict()}
 
 
 @app.patch("/agents/{agent_id}/context", dependencies=[Depends(require_write)])

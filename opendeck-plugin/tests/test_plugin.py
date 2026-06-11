@@ -263,3 +263,58 @@ class TestFormatValue:
     def test_long_string_truncated(self):
         result = _format_value("a" * 50, "raw")
         assert len(result) <= 12
+
+    def test_summary_format(self):
+        assert _format_value({"title": "4> 1?", "total": 5}, "summary") == "4> 1?"
+
+
+# ---------------------------------------------------------------------------
+# AgentSlotHandler tests
+# ---------------------------------------------------------------------------
+
+class TestAgentSlotHandler:
+    async def test_slot_binds_highest_priority(self, mock_ws, mock_bridge):
+        from actions.agent_slot import AgentSlotHandler
+
+        mock_bridge.list_agents.return_value = [
+            {"id": "cursor-aaa", "type": "cursor", "status": "running", "display_label": "proj", "updated_at": 2},
+            {"id": "cursor-bbb", "type": "cursor", "status": "awaiting_input", "display_label": "urgent", "updated_at": 1},
+        ]
+        handler = AgentSlotHandler(mock_bridge)
+        await handler.on_will_appear(mock_ws, "ctx-s1", {"slot_index": 1, "agent_filter": "cursor"})
+
+        calls = [json.loads(c.args[0]) for c in mock_ws.send.call_args_list]
+        title_calls = [c for c in calls if c["event"] == "setTitle"]
+        assert title_calls[-1]["payload"]["title"] == "Input!"
+
+    async def test_slot_press_focuses_cursor(self, mock_ws, mock_bridge):
+        from actions.agent_slot import AgentSlotHandler
+
+        mock_bridge.list_agents.return_value = [
+            {"id": "cursor-aaa", "type": "cursor", "status": "running", "updated_at": 1},
+        ]
+        handler = AgentSlotHandler(mock_bridge)
+        await handler.on_key_down(mock_ws, "ctx-s1", {"slot_index": 1, "agent_filter": "cursor"})
+        mock_bridge.execute_action.assert_awaited_once_with(
+            "ui.focus_cursor_agent",
+            {"agent_id": "cursor-aaa"},
+        )
+
+
+# ---------------------------------------------------------------------------
+# AgentDashboardHandler smart press
+# ---------------------------------------------------------------------------
+
+class TestAgentDashboardSmartPress:
+    async def test_press_focuses_attention_agent(self, mock_ws, mock_bridge):
+        from actions.agent_dashboard import AgentDashboardHandler
+
+        mock_bridge.list_agents.return_value = [
+            {"id": "cursor-aaa", "type": "cursor", "status": "awaiting_input", "updated_at": 1},
+        ]
+        handler = AgentDashboardHandler(mock_bridge)
+        await handler.on_key_down(mock_ws, "ctx-d1", {"agent_filter": "cursor"})
+        mock_bridge.execute_action.assert_awaited_once_with(
+            "ui.focus_cursor_agent",
+            {"agent_id": "cursor-aaa"},
+        )

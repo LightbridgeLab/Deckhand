@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import subprocess
+import sys
 from typing import Any, Awaitable, Callable, Protocol
 
 from deckhand.metrics import Metrics
+from deckhand.orchestrator.events import build_event
 from deckhand.orchestrator.metadata import ActionMetadata
 
 
@@ -12,6 +15,8 @@ class OrchestratorActions(Protocol):
     async def cancel_agent(self, agent_id: str) -> None: ...
 
     async def provide_input(self, agent_id: str, text: str) -> None: ...
+
+    def get_agent(self, agent_id: str) -> Any: ...
 
 
 ActionHandler = Callable[[dict[str, object]], Awaitable[None]]
@@ -24,8 +29,10 @@ class ActionRegistry:
         self,
         orchestrator: OrchestratorActions,
         metrics: Metrics | None = None,
+        event_bus: Any | None = None,
     ) -> None:
         self._orchestrator = orchestrator
+        self._event_bus = event_bus
         self._metrics = metrics
         self._actions: dict[str, ActionHandler] = {}
         self._metadata: dict[str, ActionMetadata] = {}
@@ -89,6 +96,51 @@ class ActionRegistry:
                 raise ValueError("text is required")
             await self._orchestrator.provide_input(str(agent_id), str(text))
 
+        async def open_url(payload: dict[str, object]) -> None:
+            url = payload.get("url")
+            if not url:
+                raise ValueError("url is required")
+            if self._event_bus is None:
+                raise RuntimeError("event bus not configured")
+            await self._event_bus.emit(
+                build_event(
+                    "ui.open_url",
+                    {"kind": "action", "id": "ui.open_url"},
+                    {"url": str(url)},
+                )
+            )
+
+        async def focus_cursor_agent(payload: dict[str, object]) -> None:
+            agent_id = payload.get("agent_id")
+            if not agent_id:
+                raise ValueError("agent_id is required")
+            agent = self._orchestrator.get_agent(str(agent_id))
+            if agent is None:
+                raise KeyError(str(agent_id))
+            project_root = agent.project_root
+            url = f"cursor://file/{project_root}" if project_root else "cursor://"
+            if self._event_bus is not None:
+                await self._event_bus.emit(
+                    build_event(
+                        "ui.open_url",
+                        {"kind": "action", "id": "ui.focus_cursor_agent"},
+                        {
+                            "url": url,
+                            "agent_id": agent.id,
+                            "project_root": project_root,
+                        },
+                    )
+                )
+            if sys.platform == "darwin":
+                cmd = ["open", "-a", "Cursor"]
+                if project_root:
+                    cmd.append(project_root)
+                subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+
         self.register(
             "agent.start",
             start_agent,
@@ -109,4 +161,16 @@ class ActionRegistry:
                 "agent_id": {"type": "string", "required": True},
                 "text": {"type": "string", "required": True},
             },
+        )
+        self.register(
+            "ui.open_url",
+            open_url,
+            description="Request that a client open a URL or deep link",
+            payload_schema={"url": {"type": "string", "required": True}},
+        )
+        self.register(
+            "ui.focus_cursor_agent",
+            focus_cursor_agent,
+            description="Focus Cursor on an agent's project (macOS opens Cursor locally)",
+            payload_schema={"agent_id": {"type": "string", "required": True}},
         )

@@ -38,3 +38,9 @@ modules = [
 # level = "INFO"
 # Log format: "plain" (human-readable) or "json" (structured, one record per line)
 # format = "plain"
+
+[event_log]
+# Append every event-bus emission as JSONL. Used by `deckhand events tail --from-log`.
+# Off by default. Path is relative to the service's working directory.
+# enabled = false
+# path = ".deckhand/events.log"

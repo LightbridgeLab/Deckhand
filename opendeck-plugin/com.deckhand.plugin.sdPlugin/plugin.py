@@ -19,6 +19,7 @@ import websockets.asyncio.client
 
 from actions.action_run import ActionRunHandler
 from actions.agent_dashboard import AgentDashboardHandler
+from actions.agent_slot import AgentSlotHandler
 from actions.agent_status import AgentStatusHandler
 from actions.signal_trigger import SignalTriggerHandler
 from actions.widget import WidgetHandler
@@ -164,6 +165,7 @@ async def main() -> None:
     ACTION_HANDLERS["com.deckhand.signal.trigger"] = SignalTriggerHandler(bridge)
     ACTION_HANDLERS["com.deckhand.action.run"] = ActionRunHandler(bridge)
     ACTION_HANDLERS["com.deckhand.agent.dashboard"] = AgentDashboardHandler(bridge)
+    ACTION_HANDLERS["com.deckhand.agent.slot"] = AgentSlotHandler(bridge)
 
     uri = f"ws://127.0.0.1:{args.port}"
     async with websockets.asyncio.client.connect(uri) as ws:

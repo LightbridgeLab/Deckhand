@@ -1,0 +1,23 @@
+{
+  "_comment": "Post-v2 presentation catalog (stub). Dev console v2 uses text/CSS only; Phase 6 will load this for graphic presets.",
+  "com.deckhand.agent.status": {
+    "states": {
+      "idle": { "graphic": null, "title": "label" },
+      "running": { "graphic": "spinner", "title": "Running" },
+      "awaiting_input": { "graphic": "pulse", "title": "Input!" },
+      "error": { "graphic": "static", "asset": "error", "title": "Error" }
+    },
+    "ephemeral": {
+      "retry": { "graphic": null, "title": "Retry {n}" }
+    }
+  },
+  "com.deckhand.agent.slot": {
+    "states": {
+      "idle": { "graphic": null, "title": "label" },
+      "running": { "graphic": "spinner", "title": "Running" },
+      "awaiting_input": { "graphic": "pulse", "title": "Input!" },
+      "error": { "graphic": "static", "asset": "error", "title": "Error" }
+    },
+    "empty": { "graphic": null, "title": "—" }
+  }
+}

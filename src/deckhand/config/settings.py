@@ -4,13 +4,25 @@ from __future__ import annotations
 
 import logging
 import os
+from pathlib import Path
 from typing import Any
 
-from deckhand.config.loader import load_config
+from deckhand.config.loader import load_config, resolve_project_path
 from deckhand.plugins.capabilities import VALID_CAPABILITIES, PluginSpec
 from deckhand.security import ApiKeyEntry, generate_api_key
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_bool(value: str | bool) -> bool:
+    if isinstance(value, bool):
+        return value
+    normalized = value.strip().lower()
+    if normalized in ("1", "true", "yes", "on"):
+        return True
+    if normalized in ("0", "false", "no", "off"):
+        return False
+    raise ValueError(f"Invalid boolean: {value!r}")
 
 
 def _parse_plugin_entry(entry: Any) -> PluginSpec:
@@ -58,6 +70,8 @@ class Settings:
         self.rate_limit_rpm: int = 60
         self.log_level: str = "INFO"
         self.log_format: str = "plain"  # "plain" or "json"
+        self.event_log_enabled: bool = False
+        self._event_log_path_raw: str = ".deckhand/events.log"
 
         # Auth: list of {key, scope} dicts
         self._raw_api_keys: list[dict[str, str]] = []
@@ -85,6 +99,11 @@ class Settings:
             ApiKeyEntry(key=k["key"], scope=k.get("scope", "write"))
             for k in self._raw_api_keys
         ]
+
+        # Resolve project-relative paths once config_file_path is known.
+        self.event_log_path: Path = resolve_project_path(
+            self._event_log_path_raw, self.config_file_path
+        )
 
     @property
     def plugin_modules(self) -> list[str]:
@@ -135,6 +154,13 @@ class Settings:
             self.log_level = log_config.get("level", self.log_level)
             self.log_format = log_config.get("format", self.log_format)
 
+        if "event_log" in config:
+            el_config = config["event_log"]
+            if "enabled" in el_config:
+                self.event_log_enabled = _parse_bool(el_config["enabled"])
+            if "path" in el_config:
+                self._event_log_path_raw = str(el_config["path"])
+
     def _load_auth(self, auth_config: dict[str, Any]) -> None:
         """Parse the [auth] section."""
         if "api_keys" in auth_config:
@@ -183,3 +209,9 @@ class Settings:
 
         if log_format := os.getenv("DECKHAND_LOG_FORMAT"):
             self.log_format = log_format
+
+        if event_log_enabled := os.getenv("DECKHAND_EVENT_LOG_ENABLED"):
+            self.event_log_enabled = _parse_bool(event_log_enabled)
+
+        if event_log_path := os.getenv("DECKHAND_EVENT_LOG"):
+            self._event_log_path_raw = event_log_path

@@ -35,7 +35,7 @@ is broader: signals + actions + state are the primary integration surface.
 - **Actions**: Named handlers registered in an action registry.
 - **Signals**: Named handlers registered in a signal registry.
 - **Plugins**: Local Python modules only (see `deckhand.plugins.loader`).
-- **Bindings**: Button-to-action mappings plus optional indicator state keys.
+- **Bindings**: Button-to-action mappings live in OpenDeck profiles (not in Core config).
 
 ## Event Envelope
 
@@ -53,6 +53,6 @@ Events use a generic shape so agents and non-agent signals look the same to clie
 
 ## Constraints (for now)
 
-- No persistence, auth, or multi-user support.
+- Optional state persistence (JSON file) and API key auth; no multi-user support.
 - No Stream Deck SDK plugin in core; keep client implementations thin.
 - Avoid agent-specific logic in shared infrastructure.

@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Agent Slot</title>
+  <link rel="stylesheet" href="sdpi.css" />
+</head>
+<body>
+  <div class="sdpi-wrapper">
+    <div class="sdpi-heading">Dynamic Agent Slot</div>
+
+    <div class="sdpi-info">
+      Binds this button to a priority-ranked agent at runtime. Empty slots show &mdash;.
+    </div>
+
+    <div class="sdpi-item">
+      <div class="sdpi-item-label">Slot index</div>
+      <div class="sdpi-item-value">
+        <select id="slot_index">
+          <option value="1" selected>1</option>
+          <option value="2">2</option>
+          <option value="3">3</option>
+          <option value="4">4</option>
+          <option value="5">5</option>
+          <option value="6">6</option>
+          <option value="7">7</option>
+          <option value="8">8</option>
+          <option value="9">9</option>
+          <option value="10">10</option>
+          <option value="11">11</option>
+          <option value="12">12</option>
+          <option value="13">13</option>
+          <option value="14">14</option>
+          <option value="15">15</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="sdpi-item">
+      <div class="sdpi-item-label">Page</div>
+      <div class="sdpi-item-value">
+        <select id="page">
+          <option value="1" selected>1</option>
+          <option value="2">2</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="sdpi-item">
+      <div class="sdpi-item-label">Agent filter</div>
+      <div class="sdpi-item-value">
+        <input type="text" id="agent_filter" value="cursor" placeholder="cursor or *" />
+      </div>
+    </div>
+
+    <div class="sdpi-item">
+      <div class="sdpi-item-label">Sounds</div>
+      <div class="sdpi-item-value">
+        <label>
+          <input type="checkbox" id="sounds_enabled" checked />
+          Play audio on awaiting input
+        </label>
+      </div>
+    </div>
+
+    <div class="sdpi-item">
+      <div class="sdpi-item-label">Default Input</div>
+      <div class="sdpi-item-value">
+        <input type="text" id="default_input" placeholder="For non-cursor agents" />
+      </div>
+    </div>
+
+    <div class="sdpi-info">
+      Press: Cursor agents &rarr; focus in Cursor. Other agents &rarr; start / cancel / input.
+    </div>
+  </div>
+
+  <script>
+    let websocket = null;
+    let pluginUUID = null;
+    let actionInfo = null;
+    let settings = {};
+
+    function connectElgatoStreamDeckSocket(port, uuid, registerEvent, info, actionInfoStr) {
+      pluginUUID = uuid;
+      actionInfo = JSON.parse(actionInfoStr);
+      settings = actionInfo.payload.settings || {};
+
+      document.getElementById("slot_index").value = settings.slot_index || 1;
+      document.getElementById("page").value = settings.page || 1;
+      document.getElementById("agent_filter").value = settings.agent_filter || "cursor";
+      document.getElementById("sounds_enabled").checked = settings.sounds_enabled !== false;
+      document.getElementById("default_input").value = settings.default_input || "";
+
+      websocket = new WebSocket("ws://127.0.0.1:" + port);
+      websocket.onopen = function() {
+        websocket.send(JSON.stringify({
+          event: registerEvent,
+          uuid: pluginUUID
+        }));
+      };
+    }
+
+    function saveSettings() {
+      settings = {
+        slot_index: parseInt(document.getElementById("slot_index").value, 10) || 1,
+        page: parseInt(document.getElementById("page").value, 10) || 1,
+        agent_filter: document.getElementById("agent_filter").value || "cursor",
+        sounds_enabled: document.getElementById("sounds_enabled").checked,
+        default_input: document.getElementById("default_input").value || "",
+      };
+      if (websocket && websocket.readyState === WebSocket.OPEN) {
+        websocket.send(JSON.stringify({
+          event: "setSettings",
+          context: actionInfo.context,
+          payload: settings
+        }));
+      }
+    }
+
+    document.getElementById("slot_index").addEventListener("change", saveSettings);
+    document.getElementById("page").addEventListener("change", saveSettings);
+    document.getElementById("agent_filter").addEventListener("input", saveSettings);
+    document.getElementById("sounds_enabled").addEventListener("change", saveSettings);
+    document.getElementById("default_input").addEventListener("input", saveSettings);
+  </script>
+</body>
+</html>
