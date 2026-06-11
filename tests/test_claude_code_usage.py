@@ -140,6 +140,29 @@ async def test_state_value_shape(state: StateStore, tmp_path: Path) -> None:
 # --------------------------------------------------------- token counting --
 
 
+def test_token_total_floors_negative_components_at_zero() -> None:
+    """A single negative field must not subtract from the running sum."""
+    total = ccu._token_total(
+        {
+            "input_tokens": -10,
+            "cache_creation_input_tokens": 50,
+            "output_tokens": 100,
+        }
+    )
+    assert total == 150  # not 140
+
+
+def test_token_total_handles_non_numeric_fields() -> None:
+    total = ccu._token_total(
+        {
+            "input_tokens": "garbage",
+            "cache_creation_input_tokens": None,
+            "output_tokens": 7,
+        }
+    )
+    assert total == 7
+
+
 async def test_token_total_excludes_cache_read(
     state: StateStore, tmp_path: Path
 ) -> None:
@@ -364,7 +387,111 @@ async def test_zero_or_negative_cap_treated_as_unset(
         assert state.get_state(key)["value"]["percent"] is None
 
 
+@pytest.mark.parametrize("raw_cap", [0, -100])
+async def test_publish_defends_against_unfiltered_non_positive_cap(
+    state: StateStore, tmp_path: Path, raw_cap: int
+) -> None:
+    """If a caller bypasses _optional_int and passes 0 / -N straight in,
+    _publish's own ``cap and cap > 0`` guard must still hold percent to None."""
+    _seed(
+        tmp_path,
+        _record(
+            timestamp=_now() - timedelta(minutes=1),
+            model="claude-opus-4-7",
+            output=10,
+        ),
+    )
+    caps = {
+        "session_tokens": raw_cap,  # raw value, not run through _optional_int
+        "week_tokens": None,
+        "week_sonnet_tokens": None,
+    }
+    await _run_poll(state, tmp_path, caps=caps)
+    entry = state.get_state("usage.claude_code.session_tokens")["value"]
+    assert entry["percent"] is None
+    # max is whatever the caller passed (0 or negative) — _publish only
+    # gates the percent computation, not the max field.
+    assert entry["max"] == raw_cap
+
+
 # ----------------------------------------------------------- empty state ----
+
+
+def test_clamp_warns_on_below_minimum(
+    state: StateStore,
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Misconfigured values are clamped AND logged so the operator notices."""
+    import logging as _logging
+
+    caplog.set_level(_logging.WARNING, logger=ccu.logger.name)
+    poller = ccu.UsagePoller(
+        registry=_registry_stub(state),
+        data_dir=tmp_path,
+        poll_interval=0.1,  # below 1.0 floor
+        session_window_hours=0.0001,  # below 60s floor
+        caps={"session_tokens": None, "week_tokens": None, "week_sonnet_tokens": None},
+    )
+    assert poller._poll_interval == ccu._MIN_POLL_INTERVAL_SEC
+    assert poller._session_window_sec == ccu._MIN_SESSION_WINDOW_SEC
+
+    warnings = [r.message for r in caplog.records if r.levelno == _logging.WARNING]
+    assert any("poll_interval_seconds" in m for m in warnings), warnings
+    assert any("session_window_hours" in m for m in warnings), warnings
+
+
+async def test_register_holds_strong_reference_to_background_task(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``register()`` must keep the polling task alive past the call.
+
+    asyncio.create_task only weakly references the returned task; without
+    storing a strong ref the task can be garbage-collected before it ever
+    runs. This test asserts the module-level set is populated and that
+    the task self-removes when cancelled.
+    """
+    # Sandbox: no config.toml in tmp_path, point data_dir at tmp_path.
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("DECKHAND_CONFIG_FILE", raising=False)
+    monkeypatch.setattr(ccu, "_DEFAULT_DATA_DIR", str(tmp_path))
+
+    # Stub registry whose state is a real StateStore.
+    registry = _registry_stub(StateStore(EventBus()))
+
+    ccu._BACKGROUND_TASKS.clear()
+    ccu.register(registry)
+    assert len(ccu._BACKGROUND_TASKS) == 1
+
+    # Cancel + await so the task settles cleanly; done callback should
+    # drain the strong-ref set.
+    task = next(iter(ccu._BACKGROUND_TASKS))
+    task.cancel()
+    try:
+        await task
+    except BaseException:
+        pass
+    assert len(ccu._BACKGROUND_TASKS) == 0
+
+
+def test_clamp_silent_when_above_minimum(
+    state: StateStore,
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A reasonable config must NOT log a clamp warning."""
+    import logging as _logging
+
+    caplog.set_level(_logging.WARNING, logger=ccu.logger.name)
+    ccu.UsagePoller(
+        registry=_registry_stub(state),
+        data_dir=tmp_path,
+        poll_interval=30,
+        session_window_hours=5,
+        caps={"session_tokens": None, "week_tokens": None, "week_sonnet_tokens": None},
+    )
+    assert not any("below minimum" in str(r.message).lower() for r in caplog.records)
 
 
 async def test_no_data_dir_publishes_zero_metrics(

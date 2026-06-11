@@ -65,9 +65,16 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_POLL_INTERVAL_SEC = 30.0
 _DEFAULT_SESSION_WINDOW_HOURS = 5.0
+_MIN_POLL_INTERVAL_SEC = 1.0
+_MIN_SESSION_WINDOW_SEC = 60.0
 _DEFAULT_DATA_DIR = "~/.claude"
 _WEEK_SECONDS = 7 * 24 * 3600
 _SOURCE = {"kind": "plugin", "id": "claude_code_usage"}
+
+# Hold a strong reference to every scheduled poller task. asyncio.create_task
+# only keeps a weak reference, so without this the task can be garbage-
+# collected mid-run. Tasks self-deregister on completion.
+_BACKGROUND_TASKS: set[asyncio.Task[Any]] = set()
 
 
 def register(registry: PluginRegistry) -> None:
@@ -104,7 +111,9 @@ def register(registry: PluginRegistry) -> None:
         logger.debug("no running loop; claude_code_usage poller not scheduled")
         return
 
-    asyncio.create_task(poller.run())
+    task = asyncio.create_task(poller.run())
+    _BACKGROUND_TASKS.add(task)
+    task.add_done_callback(_BACKGROUND_TASKS.discard)
 
 
 # ---------------------------------------------------------------- poller --
@@ -127,9 +136,40 @@ class UsagePoller:
     ) -> None:
         self._registry = registry
         self._data_dir = data_dir
-        self._poll_interval = max(1.0, poll_interval)
-        self._session_window_sec = max(60.0, session_window_hours * 3600.0)
+        self._poll_interval = self._clamp(
+            "poll_interval_seconds",
+            poll_interval,
+            minimum=_MIN_POLL_INTERVAL_SEC,
+        )
+        session_window_sec = session_window_hours * 3600.0
+        clamped_sec = self._clamp(
+            "session_window_hours (seconds)",
+            session_window_sec,
+            minimum=_MIN_SESSION_WINDOW_SEC,
+        )
+        self._session_window_sec = clamped_sec
         self._caps = caps
+
+    @staticmethod
+    def _clamp(name: str, value: float, *, minimum: float) -> float:
+        """Floor ``value`` at ``minimum`` and log a warning when clamping fires.
+
+        Silent clamping hides configuration mistakes (a typo like
+        ``poll_interval_seconds = 0.5`` becomes a noisy floor instead of
+        a quiet override). The clamp itself prevents pathological values
+        from melting the disk; the warning surfaces the mistake to the
+        operator.
+        """
+        if value < minimum:
+            logger.warning(
+                "claude_code_usage: %s=%s is below minimum %s; using %s instead",
+                name,
+                value,
+                minimum,
+                minimum,
+            )
+            return minimum
+        return value
 
     async def run(self) -> None:
         while True:
@@ -278,17 +318,21 @@ def _parse_line(raw: str) -> _UsageRecord | None:
 
 def _token_total(usage: dict[str, Any]) -> int:
     # Heuristic: input + cache_creation + output. cache_read is excluded
-    # because cache reads are not billed at full rate.
-    def _int(key: str) -> int:
+    # because cache reads are not billed at full rate. Each component is
+    # floored at zero so a single negative field can't subtract from the
+    # running session/week sums (the outer ``tokens <= 0`` guard only
+    # checks the final total, which would let -10 + 20 = 10 sneak in).
+    def _nonneg_int(key: str) -> int:
         try:
-            return int(usage.get(key) or 0)
+            n = int(usage.get(key) or 0)
         except (TypeError, ValueError):
             return 0
+        return n if n > 0 else 0
 
     return (
-        _int("input_tokens")
-        + _int("cache_creation_input_tokens")
-        + _int("output_tokens")
+        _nonneg_int("input_tokens")
+        + _nonneg_int("cache_creation_input_tokens")
+        + _nonneg_int("output_tokens")
     )
 
 
