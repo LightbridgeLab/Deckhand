@@ -47,7 +47,7 @@ All notable changes to Deckhand will be documented in this file.
 
 - **Documentation**
   - Plugin author guide (`docs/PLUGIN_GUIDE.md`)
-  - Stream Deck client integration guide (`docs/STREAMDECK_CLIENT.md`)
+  - Cursor Stream Deck profiles guide (`docs/CURSOR_STREAM_DECK_PROFILES.md`)
   - Complete API reference (`docs/API.md`)
   - Event schema reference (`docs/EVENTS.md`)
   - Reference hook configurations (`examples/claude_code_hooks.json`, `examples/cursor_hooks.json`)
