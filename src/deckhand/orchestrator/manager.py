@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Iterable
 
@@ -10,6 +11,12 @@ from deckhand.orchestrator.focusers import Focuser, FocuserRegistry
 from deckhand.orchestrator.state import StateStore
 
 logger = logging.getLogger(__name__)
+
+# Cap any single focuser invocation so a hung focuser cannot pin the
+# action handler indefinitely. Individual focusers may have their own
+# tighter timeout (the iTerm one caps osascript at 5s); this is the
+# safety net for any focuser that forgets.
+_FOCUSER_TIMEOUT_SEC = 10.0
 
 
 class Orchestrator:
@@ -85,7 +92,14 @@ class Orchestrator:
                 logger.info("pending agent %s has no focuser; skipping", agent_id)
                 continue
             try:
-                await focuser()
+                await asyncio.wait_for(focuser(), timeout=_FOCUSER_TIMEOUT_SEC)
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "focuser for %s timed out after %.1fs",
+                    agent_id,
+                    _FOCUSER_TIMEOUT_SEC,
+                )
+                continue
             except Exception:
                 logger.exception("focuser for %s failed", agent_id)
                 continue

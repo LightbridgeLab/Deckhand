@@ -545,9 +545,11 @@ async def claude_code_hook(payload: ClaudeCodeHookPayload) -> dict[str, object]:
         agent = existing  # type: ignore[assignment]
         if payload.cwd and agent.project_root != payload.cwd:
             agent.project_root = payload.cwd
-        # Late-arriving iterm_session_id (e.g. user upgraded their hook
-        # script mid-session) — register the focuser if missing.
-        if payload.iterm_session_id and agent_id not in orchestrator.focusers:
+        # Always (re)bind the focuser when iterm_session_id is present, so
+        # late-arriving hook upgrades AND changes to the iTerm session id
+        # (e.g. the user detached and reattached a session to a new tab)
+        # take effect immediately. Building the closure is microsecond-cheap.
+        if payload.iterm_session_id:
             orchestrator.register_focuser(
                 agent_id, make_iterm_focuser(payload.iterm_session_id)
             )

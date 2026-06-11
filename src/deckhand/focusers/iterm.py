@@ -34,11 +34,25 @@ logger = logging.getLogger(__name__)
 # don't contain that prefix but stripping is cheap and defensive.
 
 
+def _escape_for_applescript(raw: str) -> str:
+    """Make ``raw`` safe to embed inside an AppleScript double-quoted string.
+
+    Strips control characters (anything below 0x20), then escapes
+    backslashes and double quotes. Backslash escaping must happen first;
+    otherwise the backslash we add to escape a quote would itself be
+    re-escaped. Control characters are dropped rather than encoded so a
+    pasted newline cannot smuggle a second AppleScript statement past the
+    closing quote.
+    """
+    stripped = "".join(ch for ch in raw if ord(ch) >= 0x20)
+    return stripped.replace("\\", "\\\\").replace('"', '\\"')
+
+
 def _build_applescript(iterm_session_id: str) -> str:
     # AppleScript itself does the matching so we don't have to parse iTerm
     # output. ``contains`` matches the trailing UUID even if iTerm reports
     # the longer ``w0t1p0:UUID`` form.
-    safe_id = iterm_session_id.replace('"', '\\"')
+    safe_id = _escape_for_applescript(iterm_session_id)
     return f'''
         tell application "iTerm2"
             activate

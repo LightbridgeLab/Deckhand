@@ -190,6 +190,50 @@ async def test_hook_late_registers_focuser_on_subsequent_event(
     assert "claude-code-1234dead" in main_mod.orchestrator.focusers
 
 
+async def test_hook_replaces_focuser_when_iterm_session_id_changes(
+    client: AsyncClient,
+) -> None:
+    """If the session reattaches to a new iTerm tab mid-session, rebind the focuser."""
+    import deckhand.main as main_mod
+
+    captured: list[str] = []
+
+    def fake_make_focuser(session_id: str):
+        captured.append(session_id)
+
+        async def f() -> None: ...
+
+        return f
+
+    main_mod.make_iterm_focuser = fake_make_focuser  # type: ignore[assignment]
+    try:
+        session_id = "abcabc00abcabc00"
+        await client.post(
+            "/agents/claude-code/hook",
+            json={
+                "session_id": session_id,
+                "hook_event_name": "SessionStart",
+                "cwd": "/tmp/p",
+                "iterm_session_id": "iterm-OLD",
+            },
+        )
+        await client.post(
+            "/agents/claude-code/hook",
+            json={
+                "session_id": session_id,
+                "hook_event_name": "UserPromptSubmit",
+                "cwd": "/tmp/p",
+                "iterm_session_id": "iterm-NEW",
+            },
+        )
+        # SessionStart bound OLD, UserPromptSubmit bound NEW (replace, not skip).
+        assert captured == ["iterm-OLD", "iterm-NEW"]
+    finally:
+        from deckhand.focusers import iterm as iterm_mod
+
+        main_mod.make_iterm_focuser = iterm_mod.make_iterm_focuser  # type: ignore[assignment]
+
+
 async def test_hook_session_end_drops_focuser(client: AsyncClient) -> None:
     import deckhand.main as main_mod
 
@@ -269,7 +313,7 @@ async def test_focus_next_pending_action_against_live_orchestrator(
         assert resp.status_code == 200
         assert calls == ["iterm-A", "iterm-B"]
 
-        # Empty queue: still success (action is no-op).
+        # Empty queue: still success (action is no-op) AND no focuser fires.
         await client.post(
             "/agents/claude-code/hook",
             json={
@@ -281,6 +325,9 @@ async def test_focus_next_pending_action_against_live_orchestrator(
         )
         resp = await client.post("/actions/agents.focus_next_pending", json={})
         assert resp.status_code == 200
+        # Guard against a regression that fires a stale focuser: calls
+        # must NOT have grown beyond the two real presses above.
+        assert calls == ["iterm-A", "iterm-B"]
     finally:
         # Restore so other tests in the module pick up the real symbol.
         main_mod.make_iterm_focuser = iterm_mod.make_iterm_focuser  # type: ignore[assignment]
