@@ -84,7 +84,9 @@ def test_ingest_command_pins_config_before_subcommand() -> None:
         "claude-code",
         config_path="/Users/me/dev/Deckhand/config.toml",
     )
-    assert cmd.startswith("/opt/deckhand --config /Users/me/dev/Deckhand/config.toml hooks ingest")
+    assert cmd.startswith(
+        "/opt/deckhand --config /Users/me/dev/Deckhand/config.toml hooks ingest"
+    )
 
 
 def test_merge_cursor_idempotent() -> None:

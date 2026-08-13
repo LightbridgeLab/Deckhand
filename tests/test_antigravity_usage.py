@@ -172,9 +172,7 @@ def test_decode_keychain_blob_go_keyring() -> None:
     import json
 
     inner = {"token": {"access_token": "abc", "refresh_token": "xyz"}}
-    raw = "go-keyring-base64:" + base64.b64encode(
-        json.dumps(inner).encode()
-    ).decode()
+    raw = "go-keyring-base64:" + base64.b64encode(json.dumps(inner).encode()).decode()
     assert aq._decode_keychain_blob(raw) == inner
 
 

@@ -45,7 +45,7 @@ import platform
 import subprocess
 import time
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import urlencode
 
@@ -141,7 +141,7 @@ def _parse_iso(value: str | None) -> datetime | None:
     except ValueError:
         return None
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(tzinfo=UTC)
     return dt
 
 
@@ -238,7 +238,9 @@ def _write_keychain_credentials(cred: dict[str, Any]) -> None:
             text=True,
         )
     except (subprocess.CalledProcessError, FileNotFoundError) as exc:
-        logger.warning("Failed to write refreshed Antigravity tokens to Keychain: %s", exc)
+        logger.warning(
+            "Failed to write refreshed Antigravity tokens to Keychain: %s", exc
+        )
 
 
 def refresh_access_token(cred: dict[str, Any]) -> dict[str, Any]:
@@ -282,7 +284,7 @@ def refresh_access_token(cred: dict[str, Any]) -> dict[str, Any]:
         skew = int(expires_in) if expires_in is not None else 3600
     except (TypeError, ValueError):
         skew = 3600
-    expiry = datetime.now(timezone.utc) + timedelta(seconds=max(skew - 30, 60))
+    expiry = datetime.now(UTC) + timedelta(seconds=max(skew - 30, 60))
     new_token = dict(token)
     new_token["access_token"] = access
     new_token["expiry"] = expiry.isoformat()
@@ -362,7 +364,7 @@ def fetch_quota_snapshot(*, timeout: float = 30.0) -> dict[str, Any]:
                     body={"project": project.strip()},
                 )
                 raw = dict(raw)
-                raw.setdefault("fetchedAt", datetime.now(timezone.utc).isoformat())
+                raw.setdefault("fetchedAt", datetime.now(UTC).isoformat())
                 return raw
             except AntigravityQuotaError as exc:
                 last_err = exc
@@ -394,9 +396,7 @@ def fetch_quota_snapshot(*, timeout: float = 30.0) -> dict[str, Any]:
                                 body={"project": project.strip()},
                             )
                             raw = dict(raw)
-                            raw.setdefault(
-                                "fetchedAt", datetime.now(timezone.utc).isoformat()
-                            )
+                            raw.setdefault("fetchedAt", datetime.now(UTC).isoformat())
                             return raw
                         except AntigravityQuotaError as retry_exc:
                             last_err = retry_exc
@@ -425,7 +425,7 @@ def _resets_at_from_bucket(
         secs = None
     if secs is None or secs < 0:
         return None
-    base = fetched_at or datetime.now(timezone.utc)
+    base = fetched_at or datetime.now(UTC)
     return (base + timedelta(seconds=secs)).isoformat()
 
 
@@ -507,9 +507,7 @@ def parse_quota_snapshot(payload: dict[str, Any]) -> list[PlanBar]:
                 label="Current session",
                 short_label="Session",
                 percent=percent,
-                resets_at=_resets_at_from_bucket(
-                    session_bucket, fetched_at=fetched_at
-                ),
+                resets_at=_resets_at_from_bucket(session_bucket, fetched_at=fetched_at),
                 available=percent is not None,
             )
         )

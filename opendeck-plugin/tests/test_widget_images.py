@@ -8,7 +8,7 @@ from pathlib import Path
 PLUGIN_DIR = Path(__file__).parent.parent / "com.deckhand.plugin.sdPlugin"
 sys.path.insert(0, str(PLUGIN_DIR))
 
-from widget_images import (  # noqa: E402
+from widget_images import (
     catalog_image_for_key,
     image_data_uri,
     resolve_image_path,

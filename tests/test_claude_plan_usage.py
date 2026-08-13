@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 from unittest.mock import patch
 
 import pytest
@@ -146,7 +146,9 @@ async def test_plan_poller_publishes_state(state: StateStore) -> None:
 
 
 @pytest.mark.asyncio
-async def test_plan_poller_seeds_placeholders_on_first_failure(state: StateStore) -> None:
+async def test_plan_poller_seeds_placeholders_on_first_failure(
+    state: StateStore,
+) -> None:
     registry = _registry_stub(state)
     poller = ccu.PlanUsagePoller(registry=registry, poll_interval=60)
     await poller._publish_placeholders_if_empty()
@@ -183,7 +185,7 @@ async def test_fetch_usage_payload_429_includes_retry_after() -> None:
     class _Resp:
         status_code = 429
         text = '{"error":{"type":"rate_limit_error"}}'
-        headers = {"Retry-After": "90"}
+        headers: ClassVar[dict[str, str]] = {"Retry-After": "90"}
 
     class _Client:
         async def get(self, *_args, **_kwargs):

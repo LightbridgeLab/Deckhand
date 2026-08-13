@@ -21,13 +21,15 @@ def test_advertised_url_rewrites_wildcard_hosts() -> None:
     assert advertised_url("::", 19000) == "http://127.0.0.1:19000"
 
 
-def test_write_and_read_live_url(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_write_and_read_live_url(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     path = tmp_path / "runtime.toml"
     monkeypatch.setenv("DECKHAND_RUNTIME_FILE", str(path))
 
     written = write_runtime("127.0.0.1", 19000, pid=os.getpid())
     assert written == path
-    assert "url = \"http://127.0.0.1:19000\"" in path.read_text(encoding="utf-8")
+    assert 'url = "http://127.0.0.1:19000"' in path.read_text(encoding="utf-8")
     assert read_live_url() == "http://127.0.0.1:19000"
 
 

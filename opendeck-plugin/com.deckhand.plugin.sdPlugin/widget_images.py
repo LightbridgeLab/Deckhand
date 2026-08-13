@@ -75,6 +75,6 @@ def catalog_image_for_key(
         return "claude"
     if state_key.startswith("usage.antigravity."):
         return "antigravity"
-    if state_key.startswith("usage.cursor.") or state_key.startswith("cursor."):
+    if state_key.startswith(("usage.cursor.", "cursor.")):
         return "cursor"
     return None

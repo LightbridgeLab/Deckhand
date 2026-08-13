@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import json
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
-from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -438,7 +438,7 @@ class TestWidgetHandler:
         mock_ws.send.assert_not_called()
 
     def test_format_reset_remaining_days_and_hours(self):
-        now = datetime(2026, 8, 11, 12, 0, 0, tzinfo=timezone.utc)
+        now = datetime(2026, 8, 11, 12, 0, 0, tzinfo=UTC)
         assert format_reset_remaining("2026-08-14T07:30:00+00:00", now=now) == "2d 19h"
         assert format_reset_remaining("2026-08-11T16:12:00+00:00", now=now) == "4h 12m"
         assert format_reset_remaining("2026-08-11T11:00:00+00:00", now=now) is None

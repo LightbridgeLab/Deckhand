@@ -109,7 +109,7 @@ async def lifespan(app: FastAPI):
     rate_limiter = RateLimiter(settings.rate_limit_rpm)
 
     # Initialize orchestrator. Agents are registered on demand via session
-    # hooks (`deckhand hooks install` → Claude Code / Cursor ingest), 
+    # hooks (`deckhand hooks install` → Claude Code / Cursor ingest),
     # POST /agents/register, or ``deckhand agents demo`` — no
     # framework-style default agents under the v0.3 positioning.
     orchestrator = Orchestrator(

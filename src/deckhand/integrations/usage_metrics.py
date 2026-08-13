@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import time
-from datetime import timezone
+from datetime import UTC
 from email.utils import parsedate_to_datetime
 from typing import Any
 
@@ -97,7 +97,7 @@ def parse_retry_after_seconds(
     except (TypeError, ValueError, IndexError):
         return None
     if when.tzinfo is None:
-        when = when.replace(tzinfo=timezone.utc)
+        when = when.replace(tzinfo=UTC)
     epoch = now if now is not None else time.time()
     return max(0.0, when.timestamp() - epoch)
 

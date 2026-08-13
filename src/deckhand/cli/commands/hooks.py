@@ -242,9 +242,7 @@ def status(client: DeckhandClient | None, *, api_key: str | None) -> None:
                 "Deckhand repo: uv run deckhand hooks install"
             )
         else:
-            hints.append(
-                "Last ingest error is in hooks_log — fix auth/URL and retry."
-            )
+            hints.append("Last ingest error is in hooks_log — fix auth/URL and retry.")
 
     report["hints"] = hints
     emit_json(report)
