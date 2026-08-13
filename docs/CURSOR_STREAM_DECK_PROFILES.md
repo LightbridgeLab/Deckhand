@@ -64,11 +64,19 @@ Use **Agent Slot** with `slot_index` 1–4 and `agent_filter`: `cursor`. No sepa
 
 ## Cursor hook setup
 
-1. Copy hooks from [`examples/cursor_hooks.json`](../examples/cursor_hooks.json) into `~/.cursor/hooks.json`.
-2. Set `DECKHAND_URL` and `DECKHAND_API_KEY` in your shell profile.
-3. Restart Cursor. Sessions appear as `cursor-{session_id[:8]}` agents.
+```bash
+uv run deckhand hooks install cursor
+uv run deckhand hooks status
+```
 
-Test without hardware: `cat hook.json | deckhand hooks simulate cursor`.
+Restart Cursor (or start a new agent session). Sessions appear as `cursor-{session_id[:8]}`. Install writes an absolute `deckhand` path so Cursor.app does not need shell `PATH` / env vars. See [SESSION_HOOKS.md](SESSION_HOOKS.md).
+
+Test without hardware:
+
+```bash
+echo '{"session_id":"abcdef0123456789","hook_event_name":"sessionStart","cwd":"/tmp"}' \
+  | uv run deckhand hooks simulate cursor
+```
 
 ## v1.1 (experimental)
 

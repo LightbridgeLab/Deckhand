@@ -2,7 +2,7 @@
 
 > Tactile Stream Deck / OpenDeck control for Claude Code, Cursor, and your dev shell. Local-first, Python plugins, no cloud.
 
-Deckhand is a local service that watches your AI coding sessions and turns one Stream Deck button into a real action: jump to whichever Claude session needs input, show how many tokens you've burned this week, fire a project-startup macro. It runs on `127.0.0.1`, talks to [OpenDeck](https://github.com/niclasmattsson/OpenDeck) (and soon the official Elgato Stream Deck), and stays out of your way the rest of the time.
+Deckhand is a local service that watches your AI coding sessions and turns one Stream Deck button into a real action: jump to whichever Claude session needs input, show live plan usage, fire a project-startup macro. It runs on `127.0.0.1`, talks to [OpenDeck](https://github.com/niclasmattsson/OpenDeck) (and soon the official Elgato Stream Deck), and stays out of your way the rest of the time.
 
 It is *not* a generic home-automation hub, a cross-device button platform, or a marketplace. If you're looking for that, [Bitfocus Companion](https://bitfocus.io/companion) or [Touch Portal](https://www.touch-portal.com/) probably fit better.
 
@@ -11,7 +11,7 @@ It is *not* a generic home-automation hub, a cross-device button platform, or a 
 - **macOS-first.** The iTerm focuser uses AppleScript via `osascript`. Linux + Windows ports are possible but unbuilt.
 - **OpenDeck-first.** An Elgato Stream Deck plugin port is planned. Until then, OpenDeck is the only client.
 - **iTerm-first** for the focus loop. Claude sessions outside iTerm (Terminal.app, Alacritty, plain ssh) are still tracked — they just can't be focused yet.
-- **One real provider so far:** Claude Code. Cursor adapter ships in the baseline but the focus integration and usage plugin are Claude-only today. Cursor focus is tracked at [#24](https://github.com/LightbridgeLab/Deckhand/issues/24).
+- **Usage adapters today:** Claude Code (in-process OAuth plan bars), Antigravity (in-process `agy` Keychain OAuth → Gemini session/week), and Cursor (local IDE JWT → Spending dashboard pools). Cursor focus is tracked at [#24](https://github.com/LightbridgeLab/Deckhand/issues/24).
 
 ## Install
 
@@ -20,15 +20,17 @@ Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/).
 ```bash
 git clone https://github.com/LightbridgeLab/Deckhand && cd Deckhand
 uv sync --all-extras
-cp config.example.toml config.toml      # edit the [plugins] block — see Quick start below
-make dev                                 # starts the service on http://127.0.0.1:8000
+make config                              # copies config.example.toml → config.toml if missing
+# edit the [plugins] block — see Quick start below
+make dev                                 # foreground + hot reload on http://127.0.0.1:18765
+# or: make start / make stop / make status   # background server (PID + log under .deckhand/)
 ```
 
 On first start the service auto-generates a write-scoped API key and logs it. Set `[auth] api_keys` in `config.toml` to persist a key you control.
 
-## Quick start: live Claude Code token count on a button
+## Quick start: live Claude Code plan usage on a button
 
-The end state is one Stream Deck button that shows how many tokens you've spent in the last 5 hours, updating live as Claude works.
+The end state is one Stream Deck button that shows your Claude `/usage` session percentage, updating live as you work. **Usage widgets do not need session hooks** — that is a separate loop (see below).
 
 **1. Enable the usage plugin** in `config.toml`:
 
@@ -39,32 +41,7 @@ modules = [
 ]
 ```
 
-Optional — give it caps so the button can show a percentage too:
-
-```toml
-[plugins.claude_code_usage]
-session_token_cap = 500000
-week_token_cap = 10000000
-week_sonnet_token_cap = 5000000
-```
-
-**2. Install the Claude Code hooks** so Deckhand can see your sessions:
-
-```bash
-# Merge examples/claude_code_hooks.json into ~/.claude/settings.json
-# (the "hooks" block; existing hooks are preserved).
-```
-
-In your shell profile, export the Deckhand URL and the API key from `config.toml`:
-
-```bash
-export DECKHAND_URL=http://127.0.0.1:8000
-export DECKHAND_API_KEY=<your-key>
-```
-
-The hook commands also forward `$ITERM_SESSION_ID` automatically — that's what enables the focus button later.
-
-**3. Install OpenDeck and the Deckhand plugin:**
+**2. Install OpenDeck and the Deckhand plugin:**
 
 ```bash
 # macOS
@@ -78,33 +55,104 @@ cp -r opendeck-plugin/com.deckhand.plugin.sdPlugin \
 
 The plugin reads its `DECKHAND_URL` and `DECKHAND_API_KEY` from the same `config.toml` the service uses — put them under a `[client]` section. If you don't have a service checkout (OpenDeck-plugin-only install), put the file at `~/.config/deckhand/config.toml`; the service and the plugin both look there as a fallback. See `config.example.toml` for the section shape. The `DECKHAND_URL` / `DECKHAND_API_KEY` env vars override the file if you'd rather set them at the shell level.
 
-**4. Restart OpenDeck.** A "Deckhand" category appears in the action list.
+While Core is running it also writes `~/.config/deckhand/runtime.toml` with the URL it actually bound. Clients prefer that file over a stale `[client] url` or leftover `deckhand.env`, so changing `[service] port` and restarting Core is enough — you do not have to edit the OpenDeck install. After Core exits, clients fall back to `config.toml`.
 
-**5. Bind a Data Widget to a button:**
+**3. Restart OpenDeck.** A "Deckhand" category appears in the action list.
+
+**4. Bind a Data Widget to a button:**
 
 - Drag **Data Widget** onto a button.
-- In the Property Inspector, set the state key to `usage.claude_code.session_tokens` and the display format to `number` (or `percentage` if you set caps in step 1).
-- Open Claude Code in iTerm and start chatting. Within 30 seconds the button updates with your real token count.
+- In the Property Inspector, pick a state key from the dropdown (from `[catalog.state_keys]` in `config.toml`, sorted by `dropdown_label`). Catalog rows can include a suggested `format` and `button_title`; selecting a key auto-fills Display Format and Button title (you can still override). For usage bars use `percentage` (two-line title like `Session` / `36%`). Keep `button_title` short (~6 characters) so it fits the key.
+- If the dropdown is empty, copy the `[catalog.state_keys]` block from `config.example.toml`, or run `deckhand catalog sync`, then click **Refresh**.
+- Stay signed in with Claude Code (`claude auth login`). Within ~60 seconds the button updates from Anthropic's live `/usage` endpoint.
 
-That's the full loop: install → enable one plugin → install hooks → bind one button.
+That's the usage loop: enable one plugin → bind a Data Widget.
+
+## Quick start: Agent Status (live sessions)
+
+Agent Status pins one **live session**. Sessions appear only after a coding agent pings Deckhand — open IDE windows alone are not listed.
+
+```bash
+uv run deckhand hooks install   # Claude Code + Cursor (writes an absolute deckhand path, no curl/jq)
+# start a session in that tool, then:
+uv run deckhand agents list     # or Refresh on the Property Inspector
+# optional: try the button without IDE hooks
+uv run deckhand agents demo
+```
+
+Diagnose with `uv run deckhand hooks status`. Full story (Codex / Antigravity register examples, contract for other tools): [docs/SESSION_HOOKS.md](docs/SESSION_HOOKS.md).
+
+Then drag **Agent Status** onto a button and pick the session from the dropdown.
 
 ## Features
 
-### Live usage widgets — `usage.claude_code.*`
+### Live usage widgets — plan bars
 
-The `claude_code_usage` plugin polls `~/.claude/projects/**/*.jsonl` and publishes three state keys, each with the shape `{ label, current, max, percent, unit, updated_at }`:
+Usage plugins publish percentage bars as `{ label, short_label, current, max, percent, unit, resets_at, updated_at, title }` with `title` like `Session\n36%`. Bind Data Widgets with display format `percentage` (or `summary`). **`percent` is used % (0–100)** for every provider.
 
-| state key | window | model filter |
-|---|---|---|
-| `usage.claude_code.session_tokens` | last 5 hours | all |
-| `usage.claude_code.week_tokens` | last 7 days | all |
-| `usage.claude_code.week_sonnet_tokens` | last 7 days | Sonnet only |
+**Breaking change:** local Claude JSONL token totals (`usage.claude_code.session_tokens` / `.week_tokens` / `.week_sonnet_tokens`) were removed. Use Claude OAuth plan bars below, or a companion CLI such as [ccusage](https://ccusage.com/) for historical burn analytics.
 
-Bind any of them to a Data Widget button. `max` and `percent` stay `null` unless you configure caps in `config.toml` — Anthropic's actual cap numbers aren't recorded anywhere on disk, so the plugin can compute totals authoritatively but only your configuration knows the denominator. Token counting is `input + cache_creation + output` (cache reads excluded). See the module docstring for the full set of heuristics.
+#### Claude Code — `usage.claude_code.*`
+
+The `claude_code_usage` plugin polls Anthropic `GET /api/oauth/usage` with the Claude Code Keychain OAuth token (same source as `/usage` in the CLI):
+
+| state key | Claude `/usage` bar |
+|---|---|
+| `usage.claude_code.session` | Current session |
+| `usage.claude_code.week` | Current week (all models) |
+| `usage.claude_code.week_fable` | Current week (Fable), when your plan has that bar |
+| `usage.claude_code.credits` | Usage credits, when enabled |
+
+Requires `claude auth login` on this Mac.
+
+#### Antigravity — `usage.antigravity.*`
+
+The `antigravity_usage` plugin reads the `agy` OAuth token from the macOS Keychain (same credentials as the `/usage` panel) and polls Google Cloud Code `retrieveUserQuotaSummary` in-process — no extra CLI install.
+
+Requires `agy` signed in on this Mac.
+
+| state key | `agy` `/usage` bar |
+|---|---|
+| `usage.antigravity.session` | Gemini five-hour limit (used %) |
+| `usage.antigravity.week` | Gemini weekly limit (used %) |
+
+#### Cursor — `usage.cursor.*`
+
+The `cursor_usage` plugin reads the Cursor IDE access JWT from `state.vscdb` and polls `GetCurrentPeriodUsage` on `api2.cursor.sh` — the same source as [cursor.com/dashboard/spending](https://cursor.com/dashboard/spending).
+
+Requires Cursor signed in on this machine. Enable in `config.toml`:
+
+```toml
+[plugins]
+modules = [
+  "deckhand.plugins.claude_code_usage",
+  "deckhand.plugins.antigravity_usage",
+  "deckhand.plugins.cursor_usage",
+]
+```
+
+| state key | Spending dashboard |
+|---|---|
+| `usage.cursor.models` | Cursor Models pool (used %) |
+| `usage.cursor.other` | Other Models pool (used %) |
+| `usage.cursor.on_demand` | On-demand spend vs hard limit (used %) |
+
+Bind the same way as Claude (`percentage`). Press a usage button to briefly flash time-until-reset (`Xd Yh` or `Xh Ym`); duration is `[client].usage_reset_flash_seconds` (default 5).
+
+### Usage widgets roadmap
+
+| Status | Surface |
+|---|---|
+| Shipped | Claude OAuth plan bars |
+| Shipped | Antigravity in-process OAuth (Gemini session/week) |
+| Shipped | Cursor Spending adapter → `usage.cursor.*` ([#40](https://github.com/LightbridgeLab/Deckhand/issues/40)) |
+| Non-goals | Multi-provider federation, caut/CodexBar as a submodule, local JSONL/ccusage burn analytics inside Deckhand |
+
+For historical cost dashboards across many CLIs, use companions such as [CodexBar](https://github.com/steipete/CodexBar), [caut](https://github.com/Dicklesworthstone/coding_agent_usage_tracker), or [ccusage](https://ccusage.com/) — Deckhand stays a Stream Deck state publisher for the tools you bind buttons to.
 
 ### Pending-input focus
 
-While the hooks are running, two state keys aggregate "needs input" across every local Claude Code session:
+While session hooks are running, two state keys aggregate "needs input" across tracked sessions:
 
 - `agents.pending_input_count` → `{ "count": N }` for a numeric Data Widget
 - `agents.pending_input` → `{ "agent_ids": [...] }` (oldest first) for advanced use
@@ -134,20 +182,29 @@ See [opendeck-plugin/README.md](opendeck-plugin/README.md) for property-inspecto
 
 ## CLI
 
-`make dev` starts the service. In another shell, the `deckhand` CLI talks to it over the same HTTP/WebSocket API as the OpenDeck plugin:
+`make dev` (or `make start` for background) starts the service. In another shell, the `deckhand` CLI talks to it over the same HTTP/WebSocket API as the OpenDeck plugin:
 
 ```bash
 uv run deckhand --help
 uv run deckhand state list
-uv run deckhand state watch usage.claude_code.session_tokens
+uv run deckhand state watch usage.claude_code.session
 uv run deckhand events tail --type agent.status_changed --type state.changed
 uv run deckhand actions list
 uv run deckhand actions call agents.focus_next_pending
+uv run deckhand catalog list
+make catalog-sync                        # live merge if Core is up; else --no-live seeds
+uv run deckhand catalog sync             # same, via CLI
 uv run deckhand agents list
-cat examples/claude_code_hooks.json | jq '.hooks.SessionStart[0]' | uv run deckhand hooks simulate claude-code
+uv run deckhand hooks install
+uv run deckhand hooks status
+uv run deckhand agents demo
+echo '{"session_id":"abcdef0123456789","hook_event_name":"SessionStart","cwd":"/tmp"}' \
+  | uv run deckhand hooks simulate claude-code
 ```
 
-Connection settings come from `--url` / `--api-key`, then `DECKHAND_URL` / `DECKHAND_API_KEY`, then `config.toml`. The on-disk event log is opt-in; turn it on with `[event_log] enabled = true` to enable `deckhand events tail --from-log`.
+Connection settings come from `--url` / `--api-key`, then `DECKHAND_URL` / `DECKHAND_API_KEY`, then the live runtime file (if Core is up), then `config.toml`. The on-disk event log is opt-in; turn it on with `[event_log] enabled = true` to enable `deckhand events tail --from-log`.
+
+`deckhand catalog sync` merges curated first-party keys (based on enabled plugins) and live `GET /state` keys into `[catalog.state_keys]` without overwriting `dropdown_label` / `image` / `format` / `button_title` you already set. The OpenDeck Data Widget dropdown reads that section from the same `config.toml` when it can see the file; if OpenDeck's working directory cannot (common for the Plugins install), the plugin falls back to `GET /catalog/state_keys` on the running Core service.
 
 ## Configuration
 
@@ -156,7 +213,8 @@ Connection settings come from `--url` / `--api-key`, then `DECKHAND_URL` / `DECK
 | Setting | Env var | Default |
 |---|---|---|
 | Listen host | `DECKHAND_HOST` | `127.0.0.1` |
-| Listen port | `DECKHAND_PORT` | `8000` |
+| Listen port | `DECKHAND_PORT` | `18765` |
+| Live client URL file | `DECKHAND_RUNTIME_FILE` | `~/.config/deckhand/runtime.toml` |
 | API key | `DECKHAND_API_KEY` | auto-generated write key (logged at startup) |
 | Plugin modules | `DECKHAND_PLUGINS` | none (opt in via `config.toml`) |
 | State persistence file | `DECKHAND_STATE_FILE` | none (in-memory) |
@@ -167,6 +225,7 @@ Connection settings come from `--url` / `--api-key`, then `DECKHAND_URL` / `DECK
 
 ## Documentation
 
+- **[Session hooks](docs/SESSION_HOOKS.md)** — live agents on Stream Deck (install, verify, other-agent examples).
 - **[OpenDeck plugin internals](opendeck-plugin/README.md)** — install + develop the bridge.
 - **[Plugin Guide](docs/PLUGIN_GUIDE.md)** — write your own action / signal / state plugin.
 - **[Cursor Stream Deck profiles](docs/CURSOR_STREAM_DECK_PROFILES.md)** — layout patterns for Cursor sessions.
@@ -176,7 +235,7 @@ Connection settings come from `--url` / `--api-key`, then `DECKHAND_URL` / `DECK
 ## Run the tests
 
 ```bash
-make check         # ruff lint + format + pytest, currently 196 passing
+make check         # ruff lint + format + pytest, currently 213 passing
 ```
 
 ## Roadmap

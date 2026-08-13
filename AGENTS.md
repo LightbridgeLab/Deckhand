@@ -1,6 +1,6 @@
 # Deckhand – Development Guidelines
 
-Deckhand turns one Stream Deck button into a real action for AI coding workflows: jump to the Claude session that needs input, show how many tokens you've burned this week, fire a project-startup macro. The service runs locally on `127.0.0.1`, talks to [OpenDeck](https://github.com/niclasmattsson/OpenDeck) today and the official Elgato Stream Deck next, and is built for the specific problem of "I have multiple Claude / Cursor sessions and want tactile control over them" — not as a generic automation platform.
+Deckhand turns one Stream Deck button into a real action for AI coding workflows: jump to the Claude session that needs input, show plan usage on a button, fire a project-startup macro. The service runs locally on `127.0.0.1`, talks to [OpenDeck](https://github.com/niclasmattsson/OpenDeck) today and the official Elgato Stream Deck next, and is built for the specific problem of "I have multiple Claude / Cursor sessions and want tactile control over them" — not as a generic automation platform.
 
 If you're touching the code, the principles below capture how the project is shaped today.
 
@@ -14,11 +14,11 @@ If you're touching the code, the principles below capture how the project is sha
 
 4. **Local-first.** The service runs on the developer's machine. Prefer local APIs, local files, and AppleScript over cloud round-trips. No remote execution, no cloud orchestration, no opt-in telemetry in core.
 
-5. **Composable but specific.** Buttons trigger named actions (`agents.focus_next_pending`, `agent.start`, `ui.open_url`). Signals ingest external events. State keys drive indicator buttons (`usage.claude_code.session_tokens`, `agents.pending_input_count`). When in doubt about whether to ship something generic or specific, ship specific — the project's value is in solving the AI-coding-agent case well, not in being a marketplace.
+5. **Composable but specific.** Buttons trigger named actions (`agents.focus_next_pending`, `agent.start`, `ui.open_url`). Signals ingest external events. State keys drive indicator buttons (`usage.claude_code.session`, `agents.pending_input_count`). When in doubt about whether to ship something generic or specific, ship specific — the project's value is in solving the AI-coding-agent case well, not in being a marketplace.
 
 ## Architecture Snapshot
 
-- **Service:** FastAPI HTTP + WebSocket on `127.0.0.1:8000`.
+- **Service:** FastAPI HTTP + WebSocket on `127.0.0.1:18765` by default. On startup Core writes the bound URL to `~/.config/deckhand/runtime.toml` so OpenDeck and the CLI can find a non-default port.
 - **Event bus:** in-memory pub/sub with a versioned event envelope (`type`, `source`, `payload`, `ts`, `version`). In-process listeners and WebSocket subscribers receive the same stream.
 - **State store:** in-memory key/value with optional TTL; emits `state.changed`. Optional JSON persistence across restarts.
 - **Actions:** named async handlers (`ActionRegistry`). Built-ins cover agent lifecycle (`agent.start/cancel/input`), UI hints (`ui.open_url`, `ui.focus_cursor_agent`), and the pending-input focuser (`agents.focus_next_pending`).
@@ -43,14 +43,14 @@ Use `build_event(...)` / `build_error_event(...)` from `deckhand.orchestrator.ev
 ## Client Expectations
 
 - Clients open URLs / native apps themselves; the core emits `ui.open_url` and similar but does not shell out for the client.
-- Discovery: `GET /actions`, `GET /signals`, `GET /agents`.
+- Discovery: `GET /actions`, `GET /signals`, `GET /agents`, `GET /catalog/state_keys`. Data Widget state-key options come from `[catalog.state_keys]` in `config.toml` (local file and/or Core). The Property Inspector sorts entries by `dropdown_label` (menu name, not the key face). Optional `format` and `button_title` on a catalog row are applied when the key is selected; `button_title` is the first line drawn on the key. Clients find Core's listen URL from `~/.config/deckhand/runtime.toml` (written on startup) before falling back to `[client]` / `[service]` / `deckhand.env`.
 - Live updates: subscribe to `/events` WebSocket and update indicators from `state.changed`.
 
 ## Scope (deliberate non-goals)
 
 - **macOS-first** in v0.3. The iTerm focuser is AppleScript-based. Linux and Windows ports are interesting but unscoped.
 - **OpenDeck-first.** Elgato Stream Deck plugin port is planned; until it lands, OpenDeck is the only client.
-- **One provider per integration surface.** Today: Claude Code for usage + focus, Cursor for status reflection. Don't fan out the abstraction until we have a concrete second provider to test against.
+- **Concrete usage adapters, not a federation layer.** Today: Claude Code (in-process OAuth), Antigravity (in-process `agy` Keychain OAuth → Cloud Code Gemini session/week), and Cursor (local IDE JWT → Spending dashboard pools). Do not add another quota provider until there is a concrete need and a thin adapter to test against. Do not vendor caut/CodexBar or reintroduce local JSONL burn analytics in core — point power users at companion CLIs for historical cost dashboards.
 - **No multi-user, no cloud sync, no remote agents.** Service is single-user, single-machine.
 
 ## Constraints

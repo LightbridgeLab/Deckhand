@@ -280,7 +280,7 @@ Events are automatically versioned (currently "1.0") and include timestamps.
 2. **Use descriptive names**: Namespace actions/signals (e.g., `lights.turn_on`, `camera.motion`)
 3. **Document payload schemas**: Help clients understand expected fields
 4. **Handle errors gracefully**: Raise appropriate exceptions (`ValueError`, `KeyError`)
-5. **Update state for indicators**: Use state keys that clients can bind to button indicators
+5. **Update state for indicators**: Use state keys that clients can bind to button indicators. For the OpenDeck Data Widget dropdown, list keys under `[catalog.state_keys]` in `config.toml` (or run `deckhand catalog sync`).
 6. **Use TTL for temporary state**: Motion detection, temporary alerts, etc.
 7. **Emit events for important changes**: Notify clients of state changes or custom events
 8. **Keep handlers async**: All handlers must be async functions
