@@ -17,7 +17,6 @@ class MockWebSocket:
 
     async def accept(self) -> None:
         """No-op accept method for EventBus.subscribe()."""
-        pass
 
     async def send_json(self, data: dict) -> None:
         """Capture events sent to the WebSocket."""

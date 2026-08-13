@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Iterable
+from collections.abc import Iterable
 
 from deckhand.agents.base import AgentBase
 from deckhand.metrics import Metrics
@@ -93,7 +93,7 @@ class Orchestrator:
                 continue
             try:
                 await asyncio.wait_for(focuser(), timeout=_FOCUSER_TIMEOUT_SEC)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.warning(
                     "focuser for %s timed out after %.1fs",
                     agent_id,

@@ -277,7 +277,7 @@ import websockets
 import json
 
 async def listen():
-    uri = "ws://127.0.0.1:8000/events"
+    uri = "ws://127.0.0.1:18765/events"
     async with websockets.connect(uri) as websocket:
         while True:
             message = await websocket.recv()

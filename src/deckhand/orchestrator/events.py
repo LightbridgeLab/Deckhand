@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any, Awaitable, Callable
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from fastapi import WebSocket
 
@@ -150,6 +151,7 @@ class EventBus:
             try:
                 await websocket.send_json(event)
             except Exception:
+                logger.warning("Dropping dead WebSocket subscriber", exc_info=True)
                 dead.append(websocket)
         for websocket in dead:
             self._subscribers.discard(websocket)

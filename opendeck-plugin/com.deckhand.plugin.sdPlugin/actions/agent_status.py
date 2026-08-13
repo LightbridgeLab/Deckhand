@@ -12,7 +12,6 @@ import logging
 from typing import Any
 
 import websockets.asyncio.client
-
 from audio import play_sound
 from bridge import DeckhandBridge
 
@@ -155,10 +154,21 @@ class AgentStatusHandler:
                     {
                         "type": "agentList",
                         "agents": agents,
+                        "core_url": self.bridge.base_url,
                     },
                 )
-            except Exception:
+            except Exception as exc:
                 logger.exception("Failed to fetch agents for PI")
+                await _send_to_property_inspector(
+                    ws,
+                    context,
+                    {
+                        "type": "agentList",
+                        "agents": [],
+                        "error": str(exc) or "Failed to fetch agents",
+                        "core_url": self.bridge.base_url,
+                    },
+                )
 
     async def on_deckhand_event(
         self,

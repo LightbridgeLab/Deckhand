@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from typing import Any, Awaitable, Callable
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from deckhand.metrics import Metrics
 from deckhand.orchestrator.metadata import SignalMetadata
-
 
 SignalHandler = Callable[[dict[str, object]], Awaitable[None]]
 

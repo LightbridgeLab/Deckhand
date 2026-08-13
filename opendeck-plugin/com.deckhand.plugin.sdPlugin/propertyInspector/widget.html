@@ -11,10 +11,18 @@
 
     <div class="sdpi-item">
       <div class="sdpi-item-label">State Key</div>
-      <div class="sdpi-item-value">
-        <input type="text" id="state_key" list="state_key_list" placeholder="e.g. camera.front_door.motion" />
-        <datalist id="state_key_list"></datalist>
+      <div class="sdpi-item-value select-with-action">
+        <select id="state_key">
+          <option value="">Loading...</option>
+        </select>
+        <button type="button" id="refresh_state_keys" title="Refresh state key catalog">Refresh</button>
       </div>
+    </div>
+
+    <div class="sdpi-info" id="state_key_help">
+      Keys come from <code>[catalog.state_keys]</code> in config.toml
+      (sorted by dropdown_label). Run <code>deckhand catalog sync</code> or
+      edit the file, then Refresh.
     </div>
 
     <div class="sdpi-heading">Display</div>
@@ -28,21 +36,58 @@
           <option value="percentage">Percentage (%)</option>
           <option value="boolean">Boolean (checkmark)</option>
           <option value="number">Number</option>
+          <option value="summary">Summary</option>
         </select>
       </div>
+    </div>
+
+    <div class="sdpi-item">
+      <div class="sdpi-item-label">Button title</div>
+      <div class="sdpi-item-value">
+        <input type="text" id="button_title" maxlength="8" placeholder="from data (short_label)" />
+      </div>
+    </div>
+    <div class="sdpi-info">
+      First line on the key (keep it short — about 6 characters fits).
+      Empty uses the live <code>short_label</code>.
     </div>
 
     <div class="sdpi-heading">Interaction</div>
 
     <div class="sdpi-item">
-      <div class="sdpi-item-label">Action</div>
+      <div class="sdpi-item-label">On press</div>
       <div class="sdpi-item-value">
-        <input type="text" id="action_on_press" placeholder="e.g. lights.turn_on (optional)" />
+        <select id="press_mode">
+          <option value="peek">Peek reset time</option>
+          <option value="action">Run action</option>
+          <option value="both">Peek then action</option>
+          <option value="none">Do nothing</option>
+        </select>
       </div>
     </div>
 
-    <div class="sdpi-info">
-      Displays the current value of a Deckhand state key. Optionally executes an action on button press.
+    <div id="action_fields">
+      <div class="sdpi-item">
+        <div class="sdpi-item-label">Action</div>
+        <div class="sdpi-item-value select-with-action">
+          <select id="action_on_press">
+            <option value="">Loading...</option>
+          </select>
+          <button type="button" id="refresh_actions" title="Refresh actions from Deckhand">Refresh</button>
+        </div>
+      </div>
+
+      <div class="sdpi-item">
+        <div class="sdpi-item-label">Payload</div>
+        <div class="sdpi-item-value">
+          <input type="text" id="action_payload" placeholder='{"key": "value"} (optional JSON)' />
+        </div>
+      </div>
+    </div>
+
+    <div class="sdpi-info" id="action_help">
+      Peek shows time-until-reset for usage bars with <code>resets_at</code>.
+      Run action executes a Deckhand action (use Payload for required fields).
     </div>
   </div>
 
@@ -51,33 +96,42 @@
     let pluginUUID = null;
     let actionInfo = null;
     let settings = {};
+    // Catalog rows from the last successful getStateKeys (includes format hints).
+    let catalogEntries = [];
+
+    var STATE_KEY_HELP_DEFAULT =
+      "Keys come from [catalog.state_keys] in config.toml (sorted by dropdown_label). " +
+      "Run deckhand catalog sync or edit the file, then Refresh.";
+    var ACTION_HELP_DEFAULT =
+      "Peek shows time-until-reset for usage bars with resets_at. " +
+      "Run action executes a Deckhand action (use Payload for required fields).";
 
     function connectElgatoStreamDeckSocket(port, uuid, registerEvent, info, actionInfoStr) {
       pluginUUID = uuid;
       actionInfo = JSON.parse(actionInfoStr);
       settings = actionInfo.payload.settings || {};
 
-      // Apply saved settings to UI
-      if (settings.state_key) {
-        document.getElementById("state_key").value = settings.state_key;
-      }
       if (settings.display_format) {
         document.getElementById("display_format").value = settings.display_format;
       }
-      if (settings.action_on_press) {
-        document.getElementById("action_on_press").value = settings.action_on_press;
+      if (settings.press_mode) {
+        document.getElementById("press_mode").value = settings.press_mode;
+      } else {
+        document.getElementById("press_mode").value = "peek";
       }
+      if (settings.button_title) {
+        document.getElementById("button_title").value = settings.button_title;
+      }
+      if (settings.action_payload) {
+        document.getElementById("action_payload").value = settings.action_payload;
+      }
+      updateActionFieldsVisibility();
 
       websocket = new WebSocket("ws://127.0.0.1:" + port);
       websocket.onopen = function () {
         websocket.send(JSON.stringify({ event: registerEvent, uuid: uuid }));
-        // Request state key list from plugin for autocomplete
-        websocket.send(JSON.stringify({
-          event: "sendToPlugin",
-          action: actionInfo.action,
-          context: pluginUUID,
-          payload: { type: "getStateKeys" },
-        }));
+        requestStateKeys();
+        requestActions();
       };
 
       websocket.onmessage = function (evt) {
@@ -88,26 +142,190 @@
       };
     }
 
+    function requestStateKeys() {
+      if (!websocket || websocket.readyState !== WebSocket.OPEN || !actionInfo) {
+        return;
+      }
+      var select = document.getElementById("state_key");
+      select.innerHTML = '<option value="">Loading...</option>';
+      document.getElementById("state_key_help").textContent = STATE_KEY_HELP_DEFAULT;
+      websocket.send(JSON.stringify({
+        event: "sendToPlugin",
+        action: actionInfo.action,
+        context: pluginUUID,
+        payload: { type: "getStateKeys" },
+      }));
+    }
+
+    function requestActions() {
+      if (!websocket || websocket.readyState !== WebSocket.OPEN || !actionInfo) {
+        return;
+      }
+      var select = document.getElementById("action_on_press");
+      select.innerHTML = '<option value="">Loading...</option>';
+      document.getElementById("action_help").textContent = ACTION_HELP_DEFAULT;
+      websocket.send(JSON.stringify({
+        event: "sendToPlugin",
+        action: actionInfo.action,
+        context: pluginUUID,
+        payload: { type: "getActions" },
+      }));
+    }
+
     function handlePluginMessage(payload) {
       if (payload.type === "stateKeyList") {
-        populateStateKeyList(payload.keys);
+        populateStateKeyDropdown(payload.keys || [], payload.error, payload.hint);
+      } else if (payload.type === "actionList") {
+        populateActionDropdown(payload.actions || [], payload.error);
       }
     }
 
-    function populateStateKeyList(keys) {
-      var datalist = document.getElementById("state_key_list");
-      datalist.innerHTML = "";
-      keys.forEach(function (key) {
-        var opt = document.createElement("option");
-        opt.value = key;
-        datalist.appendChild(opt);
+    function normalizeKeyEntry(item) {
+      if (typeof item === "string") {
+        return { key: item, dropdown_label: item };
+      }
+      if (item && typeof item === "object" && item.key) {
+        var entry = {
+          key: item.key,
+          dropdown_label: item.dropdown_label || item.key,
+        };
+        if (typeof item.format === "string" && item.format) {
+          entry.format = item.format;
+        }
+        if (typeof item.button_title === "string" && item.button_title) {
+          entry.button_title = item.button_title;
+        }
+        return entry;
+      }
+      return null;
+    }
+
+    function populateStateKeyDropdown(keys, error, hint) {
+      var select = document.getElementById("state_key");
+      var help = document.getElementById("state_key_help");
+      var entries = [];
+      keys.forEach(function (item) {
+        var entry = normalizeKeyEntry(item);
+        if (entry) {
+          entries.push(entry);
+        }
       });
+
+      // Sort by dropdown_label (plugin also sorts; keep PI resilient).
+      entries.sort(function (a, b) {
+        return a.dropdown_label.toLowerCase().localeCompare(b.dropdown_label.toLowerCase());
+      });
+      catalogEntries = entries;
+
+      select.innerHTML = "";
+      var placeholder = document.createElement("option");
+      placeholder.value = "";
+
+      if (error) {
+        placeholder.textContent = "Failed to load catalog";
+        help.textContent = hint || ("Could not read state key catalog: " + error);
+      } else if (!entries.length) {
+        placeholder.textContent = "No catalog keys";
+        help.textContent = hint || STATE_KEY_HELP_DEFAULT;
+      } else {
+        placeholder.textContent = "-- Select State Key --";
+        help.textContent = STATE_KEY_HELP_DEFAULT;
+      }
+      select.appendChild(placeholder);
+
+      entries.forEach(function (entry) {
+        var opt = document.createElement("option");
+        opt.value = entry.key;
+        opt.textContent = entry.dropdown_label;
+        if (entry.key === settings.state_key) {
+          opt.selected = true;
+        }
+        select.appendChild(opt);
+      });
+
+      // Keep a previously saved key even if it is temporarily missing
+      if (
+        settings.state_key &&
+        !entries.some(function (e) { return e.key === settings.state_key; })
+      ) {
+        var orphan = document.createElement("option");
+        orphan.value = settings.state_key;
+        orphan.textContent = settings.state_key + " (not in catalog)";
+        orphan.selected = true;
+        select.appendChild(orphan);
+      }
+    }
+
+    function populateActionDropdown(actions, error) {
+      var select = document.getElementById("action_on_press");
+      var help = document.getElementById("action_help");
+      var names = [];
+      actions.forEach(function (act) {
+        if (!act) {
+          return;
+        }
+        if (typeof act === "string" && act.trim()) {
+          names.push({ name: act.trim(), description: "" });
+          return;
+        }
+        if (typeof act === "object" && typeof act.name === "string" && act.name.trim()) {
+          names.push({
+            name: act.name.trim(),
+            description: typeof act.description === "string" ? act.description : "",
+          });
+        }
+      });
+
+      select.innerHTML = "";
+      var placeholder = document.createElement("option");
+      placeholder.value = "";
+
+      if (error) {
+        placeholder.textContent = "Failed to load actions";
+        help.textContent = "Could not fetch actions from Deckhand Core: " + error;
+      } else {
+        placeholder.textContent = "-- None --";
+        help.textContent = ACTION_HELP_DEFAULT;
+      }
+      select.appendChild(placeholder);
+
+      names.forEach(function (act) {
+        var opt = document.createElement("option");
+        opt.value = act.name;
+        opt.textContent = act.description
+          ? act.name + " — " + act.description
+          : act.name;
+        if (act.name === settings.action_on_press) {
+          opt.selected = true;
+        }
+        select.appendChild(opt);
+      });
+
+      if (
+        settings.action_on_press &&
+        !names.some(function (a) { return a.name === settings.action_on_press; })
+      ) {
+        var orphan = document.createElement("option");
+        orphan.value = settings.action_on_press;
+        orphan.textContent = settings.action_on_press + " (not listed)";
+        orphan.selected = true;
+        select.appendChild(orphan);
+      }
+    }
+
+    function updateActionFieldsVisibility() {
+      var mode = document.getElementById("press_mode").value;
+      var show = mode === "action" || mode === "both";
+      document.getElementById("action_fields").style.display = show ? "" : "none";
     }
 
     function saveSettings() {
       settings.state_key = document.getElementById("state_key").value;
       settings.display_format = document.getElementById("display_format").value;
+      settings.button_title = document.getElementById("button_title").value.trim();
+      settings.press_mode = document.getElementById("press_mode").value || "peek";
       settings.action_on_press = document.getElementById("action_on_press").value;
+      settings.action_payload = document.getElementById("action_payload").value;
 
       if (websocket && websocket.readyState === WebSocket.OPEN) {
         websocket.send(JSON.stringify({
@@ -118,21 +336,32 @@
       }
     }
 
-    // Refresh autocomplete when the state key input is focused
-    document.getElementById("state_key").addEventListener("focus", function () {
-      if (websocket && websocket.readyState === WebSocket.OPEN) {
-        websocket.send(JSON.stringify({
-          event: "sendToPlugin",
-          action: actionInfo.action,
-          context: pluginUUID,
-          payload: { type: "getStateKeys" },
-        }));
+    // Apply catalog format / button_title only when the user changes State Key
+    // (not on PI open / Refresh), so existing buttons keep their override.
+    function onStateKeyChange() {
+      var key = document.getElementById("state_key").value;
+      var match = catalogEntries.find(function (e) { return e.key === key; });
+      if (match && match.format) {
+        document.getElementById("display_format").value = match.format;
       }
-    });
+      document.getElementById("button_title").value =
+        (match && match.button_title) ? match.button_title : "";
+      saveSettings();
+    }
 
-    document.getElementById("state_key").addEventListener("input", saveSettings);
+    function onPressModeChange() {
+      updateActionFieldsVisibility();
+      saveSettings();
+    }
+
+    document.getElementById("state_key").addEventListener("change", onStateKeyChange);
+    document.getElementById("refresh_state_keys").addEventListener("click", requestStateKeys);
     document.getElementById("display_format").addEventListener("change", saveSettings);
-    document.getElementById("action_on_press").addEventListener("input", saveSettings);
+    document.getElementById("button_title").addEventListener("change", saveSettings);
+    document.getElementById("press_mode").addEventListener("change", onPressModeChange);
+    document.getElementById("action_on_press").addEventListener("change", saveSettings);
+    document.getElementById("action_payload").addEventListener("change", saveSettings);
+    document.getElementById("refresh_actions").addEventListener("click", requestActions);
   </script>
 </body>
 </html>

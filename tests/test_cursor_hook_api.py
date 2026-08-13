@@ -16,6 +16,7 @@ async def client(monkeypatch):
     monkeypatch.setenv("DECKHAND_CONFIG_FILE", "/tmp/deckhand-tests-nonexistent.toml")
 
     import importlib
+
     import deckhand.main as main_mod
 
     importlib.reload(main_mod)

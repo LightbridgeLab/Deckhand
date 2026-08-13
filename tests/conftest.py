@@ -12,6 +12,15 @@ from deckhand.orchestrator.signals import SignalRegistry
 from deckhand.plugins.registry import PluginRegistry
 
 
+@pytest.fixture(autouse=True)
+def _isolate_runtime_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory
+) -> None:
+    """Keep Core's runtime.toml out of the developer's ~/.config during tests."""
+    path = tmp_path_factory.mktemp("deckhand-runtime") / "runtime.toml"
+    monkeypatch.setenv("DECKHAND_RUNTIME_FILE", str(path))
+
+
 @pytest.fixture
 def event_bus() -> EventBus:
     """Fresh EventBus instance."""

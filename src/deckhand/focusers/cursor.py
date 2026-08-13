@@ -63,6 +63,7 @@ def _open_cursor(project_root: str | None) -> None:
             capture_output=True,
             text=True,
             timeout=_OPEN_TIMEOUT_SECONDS,
+            check=False,
         )
     except FileNotFoundError:
         logger.warning("`open` not available; cursor focuser is a no-op")

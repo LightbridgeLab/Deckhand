@@ -14,6 +14,7 @@ async def client(monkeypatch):
     monkeypatch.setenv("DECKHAND_CONFIG_FILE", "/tmp/deckhand-tests-nonexistent.toml")
 
     import importlib
+
     import deckhand.main as main_mod
 
     importlib.reload(main_mod)
@@ -337,6 +338,7 @@ async def test_focus_next_pending_action_against_live_orchestrator(
 async def test_hook_requires_auth(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DECKHAND_CONFIG_FILE", "/tmp/deckhand-tests-nonexistent.toml")
     import importlib
+
     import deckhand.main as main_mod
 
     importlib.reload(main_mod)

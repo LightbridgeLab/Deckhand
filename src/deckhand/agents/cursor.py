@@ -6,8 +6,6 @@ Cursor's hook system (``~/.cursor/hooks.json``) and maps them onto AgentStatus.
 
 from __future__ import annotations
 
-from typing import Optional
-
 from deckhand.agents.base import AgentBase, AgentStatus
 from deckhand.orchestrator.events import build_event
 
@@ -32,9 +30,9 @@ class CursorAgent(AgentBase):
         self,
         agent_id: str,
         session_id: str,
-        project_root: Optional[str] = None,
-        active_file: Optional[str] = None,
-        title: Optional[str] = None,
+        project_root: str | None = None,
+        active_file: str | None = None,
+        title: str | None = None,
     ) -> None:
         super().__init__(
             agent_id=agent_id,

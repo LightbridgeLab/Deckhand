@@ -5,11 +5,14 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import aiohttp
 
 logger = logging.getLogger("deckhand-bridge")
+
+RefreshConnection = Callable[[], tuple[str, str | None]]
 
 # Reconnection parameters
 _RECONNECT_BASE_DELAY = 1.0  # seconds
@@ -21,18 +24,31 @@ class DeckhandBridge:
     """Talks to Deckhand Core over HTTP (actions/state) and WebSocket (events)."""
 
     def __init__(
-        self, base_url: str = "http://localhost:8000", api_key: str | None = None
+        self, base_url: str = "http://localhost:18765", api_key: str | None = None
     ) -> None:
+        # WebSocket URL no longer carries the token as a query param;
+        # authentication happens via a first-message handshake instead.
+        self._set_urls(base_url)
+        self._api_key = api_key
+        self._session: aiohttp.ClientSession | None = None
+        self.connected = False
+
+    def _set_urls(self, base_url: str) -> None:
         self.base_url = base_url.rstrip("/")
         ws_base = self.base_url.replace("http://", "ws://").replace(
             "https://", "wss://"
         )
-        # WebSocket URL no longer carries the token as a query param;
-        # authentication happens via a first-message handshake instead.
         self.ws_url = f"{ws_base}/events"
+
+    async def apply_connection(self, base_url: str, api_key: str | None) -> None:
+        """Point the bridge at a (possibly new) Core URL / key."""
+        new_url = base_url.rstrip("/")
+        if new_url == self.base_url and api_key == self._api_key:
+            return
+        await self.close()
+        self._set_urls(new_url)
         self._api_key = api_key
-        self._session: aiohttp.ClientSession | None = None
-        self.connected = False
+        logger.info("Deckhand Core URL updated to %s", self.base_url)
 
     async def _get_session(self) -> aiohttp.ClientSession:
         if self._session is None or self._session.closed:
@@ -114,6 +130,15 @@ class DeckhandBridge:
 
     # ----- HTTP: Actions -----
 
+    async def list_actions(self) -> list[dict[str, Any]]:
+        """Fetch registered actions from Core (``GET /actions``)."""
+        session = await self._get_session()
+        async with session.get(f"{self.base_url}/actions") as resp:
+            resp.raise_for_status()
+            data = await resp.json()
+        actions = data.get("actions", []) if isinstance(data, dict) else []
+        return actions if isinstance(actions, list) else []
+
     async def execute_action(
         self, action_name: str, payload: dict[str, Any] | None = None
     ) -> None:
@@ -152,9 +177,20 @@ class DeckhandBridge:
             resp.raise_for_status()
             return await resp.json()
 
+    async def list_state_key_catalog(self) -> dict[str, Any]:
+        """Fetch ``[catalog.state_keys]`` from Core (``GET /catalog/state_keys``)."""
+        session = await self._get_session()
+        async with session.get(f"{self.base_url}/catalog/state_keys") as resp:
+            resp.raise_for_status()
+            return await resp.json()
+
     # ----- WebSocket: Events (first-message auth + reconnection) -----
 
-    async def subscribe_events(self, callback: Callable[[dict[str, Any]], Any]) -> None:
+    async def subscribe_events(
+        self,
+        callback: Callable[[dict[str, Any]], Any],
+        refresh: RefreshConnection | None = None,
+    ) -> None:
         """Connect to Deckhand Core's event stream with automatic reconnection.
 
         Authenticates via a first-message handshake (sends ``{type: "auth",
@@ -168,6 +204,9 @@ class DeckhandBridge:
 
         while True:
             try:
+                if refresh is not None:
+                    url, key = refresh()
+                    await self.apply_connection(url, key)
                 session = await self._get_session()
                 async with session.ws_connect(self.ws_url) as ws:
                     # --- first-message auth handshake ---
@@ -208,6 +247,7 @@ class DeckhandBridge:
                 logger.warning(
                     "Deckhand Core WebSocket disconnected, reconnecting in %.1fs",
                     delay,
+                    exc_info=True,
                 )
                 await asyncio.sleep(delay)
                 delay = min(delay * _RECONNECT_BACKOFF, _RECONNECT_MAX_DELAY)

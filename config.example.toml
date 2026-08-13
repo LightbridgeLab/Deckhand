@@ -14,32 +14,48 @@
 [service]
 name = "deckhand"
 host = "127.0.0.1"
-port = 8000
+port = 18765
 
 [plugins]
 # List of plugin module paths to load. There are no default plugins —
 # add the ones you want.
 modules = [
   # "deckhand.plugins.claude_code_usage",
+  # "deckhand.plugins.antigravity_usage",
+  # "deckhand.plugins.cursor_usage",
   # "my_custom_plugin",
 ]
 
 # Per-plugin configuration: read by the plugin's own register() function.
 #
 # [plugins.claude_code_usage]
-# Polls Claude Code session logs (~/.claude/projects/**/*.jsonl) and writes
-# three state keys for Data Widget buttons: usage.claude_code.session_tokens,
-# .week_tokens, .week_sonnet_tokens. Each entry has shape:
-#   { label, current, max, percent, unit, updated_at }
-# `max` and `percent` are null unless you configure the *_token_cap below —
-# Anthropic's per-session/weekly caps are not exposed on disk.
+# OAuth plan bars (matches Claude Code `/usage`):
+#   usage.claude_code.session / .week / .week_fable / .credits
+# Each entry: { label, short_label, current, max, percent, unit, resets_at,
+#               updated_at, title } with title like "Session\n36%" for widgets.
+# Requires `claude auth login` (reads macOS Keychain Claude Code credentials).
 #
-# poll_interval_seconds = 30
-# session_window_hours  = 5
-# data_dir              = "~/.claude"
-# session_token_cap     = 500000
-# week_token_cap        = 10000000
-# week_sonnet_token_cap = 5000000
+# oauth_poll_interval_seconds = 60
+# oauth_enabled = true
+#
+# [plugins.antigravity_usage]
+# Reads `agy` Keychain OAuth (service gemini / account antigravity) and polls
+# Cloud Code retrieveUserQuotaSummary — same source as agy's `/usage` panel.
+# Publishes Gemini plan bars (same shape as Claude):
+#   usage.antigravity.session / .week
+# Requires `agy` signed in on this Mac.
+#
+# poll_interval_seconds = 60
+# enabled = true
+#
+# [plugins.cursor_usage]
+# Reads Cursor IDE JWT from state.vscdb and polls GetCurrentPeriodUsage
+# (same source as https://cursor.com/dashboard/spending). Publishes:
+#   usage.cursor.models / .other / .on_demand
+# Requires Cursor signed in on this machine.
+#
+# poll_interval_seconds = 60
+# enabled = true
 
 [paths]
 # Path to JSON file for persisting state across restarts (optional)
@@ -62,12 +78,48 @@ modules = [
 # [auth].api_keys above. Putting both in one file means there's no second
 # config surface to keep in sync.
 #
-# url = "http://127.0.0.1:8000"
+# url = "http://127.0.0.1:18765"
 # api_key = "your-write-key-here"   # same value as one of [auth].api_keys
+# While Core is running, ~/.config/deckhand/runtime.toml (the bound URL)
+# wins over this url and over a leftover OpenDeck deckhand.env.
+# On Data Widget press, briefly show time-until-reset for usage bars that
+# publish resets_at (Claude + Antigravity + Cursor). 0 disables.
+# usage_reset_flash_seconds = 5
+
+[catalog.state_keys]
+# Keys listed here appear in the Data Widget Property Inspector dropdown
+# (sorted alphabetically by dropdown_label; file order is preserved).
+# Edit by hand, or seed/merge with: deckhand catalog sync
+# (sync adds curated keys for enabled plugins + any keys currently in the
+# live state store, without overwriting dropdown_label/image/format/button_title
+# you already set).
+#
+# dropdown_label: name in the State Key menu (not drawn on the key).
+# button_title: first line on the key; omit to use live short_label.
+# image: built-in provider mark shipped with the OpenDeck plugin
+#   (claude | cursor | antigravity | blank), or a filesystem path to a PNG.
+# format: suggested Display Format applied when the key is selected in the PI
+#   (raw | currency | percentage | boolean | number | summary); overridable.
+entries = [
+  { key = "usage.claude_code.session", dropdown_label = "Claude: Session (5h)", image = "claude", format = "percentage", button_title = "Session" },
+  { key = "usage.claude_code.week", dropdown_label = "Claude: Week", image = "claude", format = "percentage", button_title = "Week" },
+  { key = "usage.claude_code.week_fable", dropdown_label = "Claude: Week (Fable)", image = "claude", format = "percentage", button_title = "Fable" },
+  { key = "usage.claude_code.credits", dropdown_label = "Claude: Credits remaining", image = "claude", format = "percentage", button_title = "Credits" },
+  { key = "usage.antigravity.session", dropdown_label = "Antigravity: Session (5h)", image = "antigravity", format = "percentage", button_title = "Session" },
+  { key = "usage.antigravity.week", dropdown_label = "Antigravity: Week", image = "antigravity", format = "percentage", button_title = "Week" },
+  { key = "usage.cursor.models", dropdown_label = "Cursor: Models", image = "cursor", format = "percentage", button_title = "Models" },
+  { key = "usage.cursor.other", dropdown_label = "Cursor: Other Models", image = "cursor", format = "percentage", button_title = "Other" },
+  { key = "usage.cursor.on_demand", dropdown_label = "Cursor: On-demand", image = "cursor", format = "percentage", button_title = "Demand" },
+  { key = "agents.pending_input_count", dropdown_label = "Pending input count", format = "number" },
+  { key = "agents.pending_input", dropdown_label = "Pending input agents", format = "summary" },
+  { key = "cursor.summary", dropdown_label = "Cursor: Summary", image = "cursor", format = "summary" },
+]
 
 [rate_limit]
-# Maximum requests per minute per client IP (default: 60)
-# rpm = 60
+# Maximum requests per minute per client IP (default: 600).
+# All local clients share 127.0.0.1, so hook traffic + OpenDeck
+# can exceed a low limit quickly.
+# rpm = 600
 
 [logging]
 # Log level: DEBUG, INFO, WARNING, ERROR, CRITICAL (default: INFO)

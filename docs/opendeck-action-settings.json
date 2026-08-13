@@ -25,13 +25,26 @@
     "label": "Data Widget",
     "property_inspector": "propertyInspector/widget.html",
     "fields": {
-      "state_key": { "type": "string", "discovery": "state_keys", "default": "" },
+      "state_key": { "type": "string", "discovery": "state_key_catalog", "default": "" },
       "display_format": {
         "type": "enum",
         "values": ["raw", "boolean", "number", "currency", "percentage", "summary"],
-        "default": "raw"
+        "default": "raw",
+        "note": "Catalog entries may include a suggested format applied when the state key is selected; the user can override."
       },
-      "action_on_press": { "type": "string", "discovery": "actions", "default": "" }
+      "button_title": {
+        "type": "string",
+        "default": "",
+        "note": "First line on the key. Catalog button_title is applied when the state key is selected; empty uses live short_label. Keep to ~6 characters so it fits the key."
+      },
+      "press_mode": {
+        "type": "enum",
+        "values": ["peek", "action", "both", "none"],
+        "default": "peek",
+        "note": "peek = flash time-until-reset; action = run Deckhand action; both = action then peek; none = no-op. Missing press_mode defaults to peek."
+      },
+      "action_on_press": { "type": "string", "discovery": "actions", "default": "" },
+      "action_payload": { "type": "json", "default": "" }
     }
   },
   "com.deckhand.signal.trigger": {

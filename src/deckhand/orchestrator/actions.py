@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-import subprocess
+import asyncio
 import sys
-from typing import Any, Awaitable, Callable, Protocol
+from collections.abc import Awaitable, Callable
+from typing import Any, Protocol
 
 from deckhand.metrics import Metrics
 from deckhand.orchestrator.events import build_event
@@ -140,10 +141,10 @@ class ActionRegistry:
                 cmd = ["open", "-a", "Cursor"]
                 if project_root:
                     cmd.append(project_root)
-                subprocess.Popen(
-                    cmd,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
+                await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.DEVNULL,
                 )
 
         self.register(

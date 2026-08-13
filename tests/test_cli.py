@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -21,16 +22,29 @@ import pytest
 from typer.testing import CliRunner
 
 from deckhand.cli import config as cli_config
+from deckhand.cli.client import DeckhandError
 from deckhand.cli.commands import (
     actions as actions_cmd,
+)
+from deckhand.cli.commands import (
     agents as agents_cmd,
+)
+from deckhand.cli.commands import (
+    catalog as catalog_cmd,
+)
+from deckhand.cli.commands import (
     events as events_cmd,
+)
+from deckhand.cli.commands import (
     hooks as hooks_cmd,
+)
+from deckhand.cli.commands import (
     signals as signals_cmd,
+)
+from deckhand.cli.commands import (
     state as state_cmd,
 )
 from deckhand.cli.main import app as cli_app
-
 
 # --------------------------------------------------------------- CLI tree --
 
@@ -39,12 +53,12 @@ def test_help() -> None:
     runner = CliRunner()
     result = runner.invoke(cli_app, ["--help"])
     assert result.exit_code == 0
-    for cmd in ("state", "events", "actions", "signals", "agents", "hooks"):
+    for cmd in ("state", "events", "actions", "signals", "agents", "hooks", "catalog"):
         assert cmd in result.output
 
 
 @pytest.mark.parametrize(
-    "group", ["state", "events", "actions", "signals", "agents", "hooks"]
+    "group", ["state", "events", "actions", "signals", "agents", "hooks", "catalog"]
 )
 def test_group_help(group: str) -> None:
     runner = CliRunner()
@@ -101,6 +115,12 @@ class StubClient:
 
     def post_cursor_hook(self, payload: dict):
         return self._record("post_cursor_hook", payload)
+
+    def register_agent(self, payload: dict):
+        return self._record("register_agent", payload)
+
+    def unregister_agent(self, agent_id: str):
+        return self._record("unregister_agent", agent_id)
 
 
 @pytest.fixture
@@ -184,23 +204,102 @@ def test_agents_input(stub: StubClient, capsys: pytest.CaptureFixture[str]) -> N
 def test_hook_simulate_claude_code(
     stub: StubClient,
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    monkeypatch.setattr(
+        "deckhand.integrations.session_hooks.default_hooks_log_path",
+        lambda: tmp_path / "hooks.log",
+    )
+    monkeypatch.delenv("ITERM_SESSION_ID", raising=False)
     payload = {"session_id": "abcdef0123", "hook_event_name": "SessionStart"}
     monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(payload)))
     hooks_cmd.simulate(stub, "claude-code")
     assert stub.calls == [("post_claude_code_hook", (payload,), {})]
 
 
+def test_hook_ingest_claude_quiet_success(
+    stub: StubClient,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    log = tmp_path / "hooks.log"
+    monkeypatch.setattr(
+        "deckhand.integrations.session_hooks.default_hooks_log_path",
+        lambda: log,
+    )
+    monkeypatch.delenv("ITERM_SESSION_ID", raising=False)
+    payload = {"session_id": "abcdef0123", "hook_event_name": "SessionStart"}
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(payload)))
+    hooks_cmd.ingest(stub, "claude-code")
+    assert stub.calls == [("post_claude_code_hook", (payload,), {})]
+    assert capsys.readouterr().out == ""
+    assert log.read_text(encoding="utf-8").rstrip().endswith(" ok")
+
+
+def test_hook_ingest_logs_and_exits_zero_on_core_error(
+    stub: StubClient,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    log = tmp_path / "hooks.log"
+    monkeypatch.setattr(
+        "deckhand.integrations.session_hooks.default_hooks_log_path",
+        lambda: log,
+    )
+
+    def boom(payload: dict) -> dict:
+        raise DeckhandError(401, "unauthorized")
+
+    stub.post_claude_code_hook = boom  # type: ignore[method-assign]
+    monkeypatch.setattr(
+        "sys.stdin",
+        io.StringIO(json.dumps({"session_id": "s", "hook_event_name": "SessionStart"})),
+    )
+    with pytest.raises(SystemExit) as exc:
+        hooks_cmd.ingest(stub, "claude-code")
+    assert exc.value.code == 0
+    assert "unauthorized" in log.read_text(encoding="utf-8")
+
+
 def test_hook_simulate_cursor(
     stub: StubClient,
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    monkeypatch.setattr(
+        "deckhand.integrations.session_hooks.default_hooks_log_path",
+        lambda: tmp_path / "hooks.log",
+    )
     payload = {"session_id": "xyz", "hook_event_name": "sessionStart"}
     monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(payload)))
     hooks_cmd.simulate(stub, "cursor")
     assert stub.calls == [("post_cursor_hook", (payload,), {})]
+
+
+def test_hook_ingest_cursor_normalizes_workspace_roots(
+    stub: StubClient,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(
+        "deckhand.integrations.session_hooks.default_hooks_log_path",
+        lambda: tmp_path / "hooks.log",
+    )
+    raw = {
+        "session_id": "abcdef12xxxx",
+        "workspace_roots": ["/tmp/proj"],
+        "prompt": "hi",
+    }
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(raw)))
+    hooks_cmd.ingest(stub, "cursor", event="sessionStart")
+    assert stub.calls[0][0] == "post_cursor_hook"
+    body = stub.calls[0][1][0]
+    assert body["cwd"] == "/tmp/proj"
+    assert body["title"] == "hi"
+    assert body["hook_event_name"] == "sessionStart"
 
 
 def test_hook_simulate_unknown_type_exits(
@@ -217,6 +316,161 @@ def test_hook_simulate_empty_stdin_exits(
     monkeypatch.setattr("sys.stdin", io.StringIO("   "))
     with pytest.raises(SystemExit):
         hooks_cmd.simulate(stub, "claude-code")
+
+
+def test_hooks_install_writes_files(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    claude = tmp_path / "claude" / "settings.json"
+    cursor = tmp_path / "cursor" / "hooks.json"
+    claude.parent.mkdir()
+    cursor.parent.mkdir()
+    claude.write_text(
+        json.dumps(
+            {
+                "hooks": {
+                    "SessionStart": [
+                        {"hooks": [{"type": "command", "command": "echo keep"}]}
+                    ]
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    cfg = tmp_path / "config.toml"
+    cfg.write_text("[auth]\n", encoding="utf-8")
+    hooks_cmd.install(
+        ["all"],
+        binary="/opt/deckhand",
+        claude_path=claude,
+        cursor_path=cursor,
+        config_path=str(cfg),
+    )
+    out = _captured_json(capsys)
+    assert out["binary"] == "/opt/deckhand"
+    assert out["config"] == str(cfg.resolve())
+    assert len(out["installed"]) == 2
+
+    claude_data = json.loads(claude.read_text(encoding="utf-8"))
+    blob = json.dumps(claude_data)
+    assert "echo keep" in blob
+    assert "hooks ingest claude-code" in blob
+    assert f"--config {cfg.resolve()}" in blob
+
+    # Second install does not duplicate
+    hooks_cmd.install(
+        ["claude-code"],
+        binary="/opt/deckhand",
+        claude_path=claude,
+        cursor_path=cursor,
+        config_path=str(cfg),
+    )
+    claude_data2 = json.loads(claude.read_text(encoding="utf-8"))
+    ingest_hits = json.dumps(claude_data2).count("hooks ingest claude-code")
+    assert ingest_hits == json.dumps(claude_data).count("hooks ingest claude-code")
+
+
+def test_hooks_status_report(
+    stub: StubClient,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(
+        "deckhand.integrations.session_hooks.claude_settings_path",
+        lambda: tmp_path / "missing-claude.json",
+    )
+    monkeypatch.setattr(
+        "deckhand.integrations.session_hooks.cursor_hooks_path",
+        lambda: tmp_path / "missing-cursor.json",
+    )
+    monkeypatch.setattr(
+        "deckhand.integrations.session_hooks.default_hooks_log_path",
+        lambda: tmp_path / "hooks.log",
+    )
+    stub.responses["list_agents"] = []
+    hooks_cmd.status(stub, api_key="k")
+    report = _captured_json(capsys)
+    assert report["core"]["reachable"] is True
+    assert report["core"]["agent_count"] == 0
+    assert report["api_key_configured"] is True
+    assert any("hooks install" in h for h in report["hints"])
+
+
+def test_hooks_status_stale_401_ignored_when_agents_listed(
+    stub: StubClient,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    log = tmp_path / "hooks.log"
+    log.write_text(
+        "2026-08-13T13:16:37Z [claude-code] HTTP 401: Missing API key\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "deckhand.integrations.session_hooks.claude_settings_path",
+        lambda: tmp_path / "missing-claude.json",
+    )
+    monkeypatch.setattr(
+        "deckhand.integrations.session_hooks.cursor_hooks_path",
+        lambda: tmp_path / "missing-cursor.json",
+    )
+    monkeypatch.setattr(
+        "deckhand.integrations.session_hooks.default_hooks_log_path",
+        lambda: log,
+    )
+    stub.responses["list_agents"] = [{"id": "claude-code-abcdef12"}]
+    hooks_cmd.status(stub, api_key="k")
+    report = _captured_json(capsys)
+    assert report["core"]["agent_count"] == 1
+    assert "Missing API key" in (report["last_ingest_error"] or "")
+    assert not any("Missing API key" in h or "do not see" in h for h in report["hints"])
+
+
+def test_hooks_status_ok_line_clears_error(
+    stub: StubClient,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    log = tmp_path / "hooks.log"
+    log.write_text(
+        "2026-08-13T13:16:37Z [claude-code] HTTP 401: Missing API key\n"
+        "2026-08-13T13:20:00Z [claude-code] ok\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "deckhand.integrations.session_hooks.claude_settings_path",
+        lambda: tmp_path / "missing-claude.json",
+    )
+    monkeypatch.setattr(
+        "deckhand.integrations.session_hooks.cursor_hooks_path",
+        lambda: tmp_path / "missing-cursor.json",
+    )
+    monkeypatch.setattr(
+        "deckhand.integrations.session_hooks.default_hooks_log_path",
+        lambda: log,
+    )
+    stub.responses["list_agents"] = []
+    hooks_cmd.status(stub, api_key="k")
+    report = _captured_json(capsys)
+    assert report["last_ingest_error"] is None
+
+
+def test_agents_demo_registers_mock(
+    stub: StubClient, capsys: pytest.CaptureFixture[str]
+) -> None:
+    agents_cmd.demo(stub)
+    assert stub.calls[0][0] == "register_agent"
+    assert stub.calls[0][1][0]["agent_type"] == "mock"
+    assert stub.calls[0][1][0]["agent_id"] == "demo-1"
+
+
+def test_agents_demo_remove(stub: StubClient) -> None:
+    agents_cmd.demo(stub, remove=True)
+    assert stub.calls == [("unregister_agent", ("demo-1",), {})]
 
 
 # --------------------------------------------------------- events tail ----
@@ -344,6 +598,7 @@ def test_events_tail_log_detects_rotation(
 
 def test_config_defaults(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
     for var in (
         "DECKHAND_URL",
         "DECKHAND_API_KEY",
@@ -434,6 +689,48 @@ def test_config_env_log_relative_resolves_against_config_dir(
     assert cfg.event_log_path == (project_dir / "logs" / "x.log").resolve()
 
 
+def test_config_live_runtime_wins_over_client_section(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A running Core's runtime.toml beats a stale [client] url."""
+    from deckhand.config.runtime import write_runtime
+
+    runtime = tmp_path / "runtime.toml"
+    monkeypatch.setenv("DECKHAND_RUNTIME_FILE", str(runtime))
+    write_runtime("127.0.0.1", 19000, pid=os.getpid())
+
+    (tmp_path / "config.toml").write_text(
+        '[client]\nurl = "http://127.0.0.1:18765"\napi_key = "client-key"\n'
+    )
+    monkeypatch.chdir(tmp_path)
+    for var in ("DECKHAND_URL", "DECKHAND_API_KEY", "DECKHAND_CONFIG_FILE"):
+        monkeypatch.delenv(var, raising=False)
+
+    cfg = cli_config.load()
+    assert cfg.url == "http://127.0.0.1:19000"
+    assert cfg.api_key == "client-key"
+
+
+def test_config_dead_runtime_falls_back_to_client(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from deckhand.config.runtime import write_runtime
+
+    runtime = tmp_path / "runtime.toml"
+    monkeypatch.setenv("DECKHAND_RUNTIME_FILE", str(runtime))
+    write_runtime("127.0.0.1", 19000, pid=1_000_000_000)
+
+    (tmp_path / "config.toml").write_text(
+        '[client]\nurl = "http://127.0.0.1:18765"\napi_key = "client-key"\n'
+    )
+    monkeypatch.chdir(tmp_path)
+    for var in ("DECKHAND_URL", "DECKHAND_API_KEY", "DECKHAND_CONFIG_FILE"):
+        monkeypatch.delenv(var, raising=False)
+
+    cfg = cli_config.load()
+    assert cfg.url == "http://127.0.0.1:18765"
+
+
 def test_config_file_only(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     config_path = tmp_path / "config.toml"
     config_path.write_text(
@@ -521,3 +818,51 @@ def test_config_project_toml_wins_over_home_dir(
     cfg = cli_config.load()
     assert cfg.url == "http://project:2"
     assert cfg.api_key == "project"
+
+
+# --------------------------------------------------------------- catalog ---
+
+
+def test_catalog_sync_no_live(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        '[plugins]\nmodules = ["deckhand.plugins.claude_code_usage"]\n',
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    for var in ("DECKHAND_URL", "DECKHAND_API_KEY", "DECKHAND_CONFIG_FILE"):
+        monkeypatch.delenv(var, raising=False)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli_app, ["--config", str(config_path), "catalog", "sync", "--no-live"]
+    )
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    keys = {e["key"] for e in payload["entries"]}
+    assert "usage.claude_code.session" in keys
+    assert "agents.pending_input_count" in keys
+
+    listed = runner.invoke(cli_app, ["--config", str(config_path), "catalog", "list"])
+    assert listed.exit_code == 0
+    assert "usage.claude_code.session" in listed.output
+
+
+def test_catalog_sync_live_warning_includes_hint(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text("[plugins]\nmodules = []\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+
+    class FailingClient:
+        def list_state(self):
+            raise DeckhandError(0, "connection failed: [Errno 61] Connection refused")
+
+    catalog_cmd.sync(FailingClient(), str(config_path), include_live=True)
+    payload = _captured_json(capsys)
+    assert "live_warning" in payload
+    assert "make dev" in payload["hint"]
+    assert "--no-live" in payload["hint"]

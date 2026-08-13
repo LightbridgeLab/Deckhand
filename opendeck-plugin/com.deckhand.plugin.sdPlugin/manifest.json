@@ -34,7 +34,7 @@
       "Controllers": ["Keypad"],
       "PropertyInspectorPath": "propertyInspector/widget.html",
       "States": [
-        { "Image": "actionDefaultImage" }
+        { "Image": "assets/widget-blank" }
       ]
     },
     {

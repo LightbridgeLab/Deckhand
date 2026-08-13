@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Awaitable, Callable
+from typing import TYPE_CHECKING
 
 from deckhand.orchestrator.actions import ActionRegistry
 from deckhand.orchestrator.events import EventBus
@@ -32,7 +33,7 @@ class PluginRegistry:
     signals: SignalRegistry
     state: StateStore
     events: EventBus
-    orchestrator: "Orchestrator | None"
+    orchestrator: Orchestrator | None
     _shutdown_hooks: list[ShutdownHook] = field(default_factory=list)
 
     def on_shutdown(self, hook: ShutdownHook) -> None:

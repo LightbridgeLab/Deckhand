@@ -11,7 +11,6 @@ from deckhand.focusers.iterm import _build_applescript, make_iterm_focuser
 from deckhand.orchestrator.focusers import FocuserRegistry
 from deckhand.orchestrator.manager import Orchestrator
 
-
 # --------------------------------------------------------- FocuserRegistry ---
 
 

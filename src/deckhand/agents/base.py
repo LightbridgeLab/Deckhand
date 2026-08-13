@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import time
 from abc import ABC, abstractmethod
+from collections.abc import Awaitable, Callable, Iterable
 from enum import Enum
-from typing import Awaitable, Callable, Iterable, Optional
 
 from deckhand.orchestrator.events import build_event
 
@@ -26,8 +26,8 @@ class AgentBase(ABC):
         agent_id: str,
         agent_type: str,
         capabilities: Iterable[str],
-        project_root: Optional[str] = None,
-        active_file: Optional[str] = None,
+        project_root: str | None = None,
+        active_file: str | None = None,
     ) -> None:
         self.id = agent_id
         self.type = agent_type
@@ -36,7 +36,7 @@ class AgentBase(ABC):
         self.project_root = project_root
         self.active_file = active_file
         self.updated_at = time.time()
-        self.on_event: Optional[EventHandler] = None
+        self.on_event: EventHandler | None = None
 
     @property
     def display_label(self) -> str:

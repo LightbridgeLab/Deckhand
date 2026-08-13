@@ -4,9 +4,9 @@ Complete API reference for the Deckhand service.
 
 ## Base URL
 
-Default: `http://127.0.0.1:8000`
+Default: `http://127.0.0.1:18765`
 
-Configure via `DECKHAND_HOST` and `DECKHAND_PORT` environment variables or config file.
+Configure via `DECKHAND_HOST` and `DECKHAND_PORT` environment variables or config file. On startup Core writes the bound URL to `~/.config/deckhand/runtime.toml` so the OpenDeck plugin and CLI can find a non-default port without editing client config.
 
 ## Agents
 
@@ -30,7 +30,7 @@ Get all registered agents.
 
 **Example:**
 ```bash
-curl http://127.0.0.1:8000/agents
+curl http://127.0.0.1:18765/agents
 ```
 
 ### Start Agent
@@ -46,7 +46,7 @@ Start an agent by ID.
 
 **Example:**
 ```bash
-curl -X POST http://127.0.0.1:8000/agents/mock-1/start
+curl -X POST http://127.0.0.1:18765/agents/mock-1/start
 ```
 
 **Errors:**
@@ -65,7 +65,7 @@ Cancel a running agent.
 
 **Example:**
 ```bash
-curl -X POST http://127.0.0.1:8000/agents/mock-1/cancel
+curl -X POST http://127.0.0.1:18765/agents/mock-1/cancel
 ```
 
 **Errors:**
@@ -91,13 +91,43 @@ Send input text to an agent.
 
 **Example:**
 ```bash
-curl -X POST http://127.0.0.1:8000/agents/mock-1/input \
+curl -X POST http://127.0.0.1:18765/agents/mock-1/input \
   -H "Content-Type: application/json" \
   -d '{"text": "Hello agent"}'
 ```
 
 **Errors:**
 - `404`: Agent not found
+
+### Register Agent
+
+Register an external or mock agent.
+
+**Endpoint:** `POST /agents/register`
+
+**Request Body:**
+```json
+{
+  "agent_id": "demo-1",
+  "agent_type": "mock",
+  "capabilities": ["accepts_text", "cancellable"],
+  "project_root": "/tmp/deckhand-demo"
+}
+```
+
+`agent_type` of `"mock"` creates a full MockAgent (start / cancel / input). Any other type creates a placeholder external agent. Prefer `deckhand agents demo` for Property Inspector testing.
+
+**Errors:**
+- `409`: Agent already registered
+
+### Unregister Agent
+
+**Endpoint:** `DELETE /agents/{agent_id}`
+
+**Response:**
+```json
+{"status": "unregistered", "agent_id": "demo-1"}
+```
 
 ## Actions
 
@@ -124,7 +154,7 @@ Get all registered actions with metadata.
 
 **Example:**
 ```bash
-curl http://127.0.0.1:8000/actions
+curl http://127.0.0.1:18765/actions
 ```
 
 ### Get Action Metadata
@@ -146,7 +176,7 @@ Get metadata for a specific action.
 
 **Example:**
 ```bash
-curl http://127.0.0.1:8000/actions/agent.start
+curl http://127.0.0.1:18765/actions/agent.start
 ```
 
 **Errors:**
@@ -172,7 +202,7 @@ Execute an action with payload.
 
 **Example:**
 ```bash
-curl -X POST http://127.0.0.1:8000/actions/agent.start \
+curl -X POST http://127.0.0.1:18765/actions/agent.start \
   -H "Content-Type: application/json" \
   -d '{"agent_id": "mock-1"}'
 ```
@@ -207,7 +237,7 @@ Get all registered signals with metadata.
 
 **Example:**
 ```bash
-curl http://127.0.0.1:8000/signals
+curl http://127.0.0.1:18765/signals
 ```
 
 ### Get Signal Metadata
@@ -230,7 +260,7 @@ Get metadata for a specific signal.
 
 **Example:**
 ```bash
-curl http://127.0.0.1:8000/signals/camera.motion
+curl http://127.0.0.1:18765/signals/camera.motion
 ```
 
 **Errors:**
@@ -258,7 +288,7 @@ Ingest an external event via webhook.
 
 **Example:**
 ```bash
-curl -X POST http://127.0.0.1:8000/signals/webhook/camera.motion \
+curl -X POST http://127.0.0.1:18765/signals/webhook/camera.motion \
   -H "Content-Type: application/json" \
   -d '{"key": "camera.front_door.motion", "active": true}'
 ```
@@ -289,7 +319,7 @@ Get all state entries.
 
 **Example:**
 ```bash
-curl http://127.0.0.1:8000/state
+curl http://127.0.0.1:18765/state
 ```
 
 ### Get State
@@ -310,7 +340,7 @@ Get state for a specific key.
 
 **Example:**
 ```bash
-curl http://127.0.0.1:8000/state/camera.front_door.motion
+curl http://127.0.0.1:18765/state/camera.front_door.motion
 ```
 
 **Errors:**
@@ -335,7 +365,7 @@ import websockets
 import json
 
 async def listen():
-    uri = "ws://127.0.0.1:8000/events"
+    uri = "ws://127.0.0.1:18765/events"
     async with websockets.connect(uri) as websocket:
         while True:
             event = await websocket.recv()
