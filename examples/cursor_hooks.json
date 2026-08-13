@@ -1,42 +1,42 @@
 {
-  "_comment": "Drop the hooks block below into ~/.cursor/hooks.json (merging with any existing hooks) to reflect Cursor agent sessions into Deckhand. Each hook reads the JSON payload Cursor writes to stdin and forwards it to Deckhand's /agents/cursor/hook endpoint. Replace DECKHAND_URL and DECKHAND_API_KEY with your values (or set them as env vars in your shell profile).",
-  "_requires": "curl, jq",
+  "_comment": "Prefer: `deckhand hooks install cursor` (writes an absolute path so Cursor.app can find deckhand without PATH). Manual install: merge into ~/.cursor/hooks.json. Each command reads Cursor's stdin JSON and POSTs a normalized payload via `deckhand hooks ingest cursor`. On `stop`, Deckhand maps the session to awaiting_input (Cursor has no explicit waiting-for-user event). Replace DECKHAND_BIN with the absolute path from `which deckhand`.",
+  "_requires": "deckhand CLI (absolute path recommended)",
   "version": 1,
   "hooks": {
     "sessionStart": [
       {
-        "command": "jq -c '{session_id, hook_event_name: \"sessionStart\", cwd: .workspace_roots[0] // .cwd // empty, title: .prompt // empty}' | curl -sS -X POST \"${DECKHAND_URL:-http://127.0.0.1:8000}/agents/cursor/hook\" -H \"Authorization: Bearer ${DECKHAND_API_KEY}\" -H 'Content-Type: application/json' --data-binary @- >/dev/null || true"
+        "command": "DECKHAND_BIN hooks ingest cursor --event sessionStart"
       }
     ],
     "beforeSubmitPrompt": [
       {
-        "command": "jq -c '{session_id, hook_event_name: \"beforeSubmitPrompt\", cwd: .workspace_roots[0] // .cwd // empty, title: .prompt // empty}' | curl -sS -X POST \"${DECKHAND_URL:-http://127.0.0.1:8000}/agents/cursor/hook\" -H \"Authorization: Bearer ${DECKHAND_API_KEY}\" -H 'Content-Type: application/json' --data-binary @- >/dev/null || true"
+        "command": "DECKHAND_BIN hooks ingest cursor --event beforeSubmitPrompt"
       }
     ],
     "preToolUse": [
       {
-        "command": "jq -c '{session_id, hook_event_name: \"preToolUse\", cwd: .workspace_roots[0] // .cwd // empty}' | curl -sS -X POST \"${DECKHAND_URL:-http://127.0.0.1:8000}/agents/cursor/hook\" -H \"Authorization: Bearer ${DECKHAND_API_KEY}\" -H 'Content-Type: application/json' --data-binary @- >/dev/null || true"
+        "command": "DECKHAND_BIN hooks ingest cursor --event preToolUse"
       }
     ],
     "postToolUse": [
       {
-        "command": "jq -c '{session_id, hook_event_name: \"postToolUse\", cwd: .workspace_roots[0] // .cwd // empty}' | curl -sS -X POST \"${DECKHAND_URL:-http://127.0.0.1:8000}/agents/cursor/hook\" -H \"Authorization: Bearer ${DECKHAND_API_KEY}\" -H 'Content-Type: application/json' --data-binary @- >/dev/null || true"
+        "command": "DECKHAND_BIN hooks ingest cursor --event postToolUse"
       }
     ],
     "postToolUseFailure": [
       {
-        "command": "jq -c '{session_id, hook_event_name: \"postToolUseFailure\", cwd: .workspace_roots[0] // .cwd // empty}' | curl -sS -X POST \"${DECKHAND_URL:-http://127.0.0.1:8000}/agents/cursor/hook\" -H \"Authorization: Bearer ${DECKHAND_API_KEY}\" -H 'Content-Type: application/json' --data-binary @- >/dev/null || true"
+        "command": "DECKHAND_BIN hooks ingest cursor --event postToolUseFailure"
       }
     ],
     "stop": [
       {
-        "_comment": "On `stop` we set deckhand_status=awaiting_input. Cursor lacks an explicit `agent is waiting for the user` event (unlike Claude Code's `Notification`), so `stop` — the agent finished a turn and the user is now the bottleneck — is the right semantic for the focus_next_pending button to surface this session as needing attention. Edit this override if you want a different mapping.",
-        "command": "jq -c '{session_id, hook_event_name: \"stop\", cwd: .workspace_roots[0] // .cwd // empty, deckhand_status: \"awaiting_input\"}' | curl -sS -X POST \"${DECKHAND_URL:-http://127.0.0.1:8000}/agents/cursor/hook\" -H \"Authorization: Bearer ${DECKHAND_API_KEY}\" -H 'Content-Type: application/json' --data-binary @- >/dev/null || true"
+        "_comment": "stop → awaiting_input so focus_next_pending / Agent Status can surface this session.",
+        "command": "DECKHAND_BIN hooks ingest cursor --event stop --status awaiting_input"
       }
     ],
     "sessionEnd": [
       {
-        "command": "jq -c '{session_id, hook_event_name: \"sessionEnd\"}' | curl -sS -X POST \"${DECKHAND_URL:-http://127.0.0.1:8000}/agents/cursor/hook\" -H \"Authorization: Bearer ${DECKHAND_API_KEY}\" -H 'Content-Type: application/json' --data-binary @- >/dev/null || true"
+        "command": "DECKHAND_BIN hooks ingest cursor --event sessionEnd"
       }
     ]
   }
