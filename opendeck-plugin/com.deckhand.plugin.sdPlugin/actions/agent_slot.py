@@ -7,6 +7,7 @@ import logging
 from typing import Any
 
 import websockets.asyncio.client
+from bridge import DeckhandBridge
 
 from actions.agent_ranking import agent_for_slot
 from actions.agent_status import (
@@ -15,7 +16,6 @@ from actions.agent_status import (
     _set_state,
     _set_title,
 )
-from bridge import DeckhandBridge
 
 logger = logging.getLogger("deckhand-action-slot")
 
@@ -175,6 +175,7 @@ class AgentSlotHandler:
                 try:
                     await _set_title(ws, context, title)
                 except Exception:
+                    logger.exception("Spinner title update failed for %s", context)
                     break
                 frame += 1
                 await asyncio.sleep(_SPINNER_INTERVAL)

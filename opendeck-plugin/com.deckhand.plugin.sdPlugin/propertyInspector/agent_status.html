@@ -11,12 +11,20 @@
 
     <div class="sdpi-item">
       <div class="sdpi-item-label">Agent</div>
-      <div class="sdpi-item-value">
+      <div class="sdpi-item-value select-with-action">
         <select id="agent_id">
           <option value="">Loading...</option>
         </select>
+        <button type="button" id="refresh_agents" title="Refresh agent list">Refresh</button>
       </div>
     </div>
+
+    <div class="sdpi-info" id="agent_help">
+      Pick a live session. Sessions appear only after a coding agent pings Deckhand
+      (open IDE windows alone are not listed). See the plugin README for setup.
+    </div>
+
+    <div class="sdpi-heading">Interaction</div>
 
     <div class="sdpi-item">
       <div class="sdpi-item-label">Sounds</div>
@@ -28,8 +36,6 @@
       </div>
     </div>
 
-    <div class="sdpi-heading">Interaction</div>
-
     <div class="sdpi-item">
       <div class="sdpi-item-label">Default Input</div>
       <div class="sdpi-item-value">
@@ -38,7 +44,16 @@
     </div>
 
     <div class="sdpi-info">
-      Press behavior: Idle &rarr; Start &bull; Running &rarr; Cancel &bull; Awaiting Input &rarr; Send default input &bull; Error &rarr; Restart
+      One press does different things depending on the agent&rsquo;s current status:
+      <br />&bull; <strong>Idle</strong> &mdash; start the agent
+      <br />&bull; <strong>Running</strong> &mdash; cancel the agent
+      <br />&bull; <strong>Awaiting Input</strong> &mdash; send Default Input to the agent
+      <br />&bull; <strong>Error</strong> &mdash; restart the agent
+      <br /><br />
+      Default Input examples (used only when status is Awaiting Input):
+      <br />&bull; <code>y</code> or <code>yes</code> &mdash; approve a permission prompt
+      <br />&bull; <code>n</code> or <code>no</code> &mdash; decline
+      <br />&bull; Leave empty &mdash; send an empty reply (only if the agent accepts blank input)
     </div>
 
     <div class="sdpi-heading">Error Recovery</div>
@@ -64,6 +79,13 @@
         </select>
       </div>
     </div>
+
+    <div class="sdpi-info">
+      When the agent enters Error and Auto-Retry is on, the plugin restarts it
+      automatically with linear backoff (5s, 10s, 15s, &hellip;) up to Max Retries.
+      Leave Auto-Retry off if you want errors to stay visible until you press the button.
+      A manual press on Error still restarts immediately and resets the retry counter.
+    </div>
   </div>
 
   <script>
@@ -71,6 +93,16 @@
     let pluginUUID = null;
     let actionInfo = null;
     let settings = {};
+
+    var AGENT_HELP_DEFAULT =
+      "Pick a live session. Sessions appear only after a coding agent pings Deckhand " +
+      "(open IDE windows alone are not listed). Examples: Claude Code, Cursor, Codex, " +
+      "Antigravity — see the plugin README / docs/SESSION_HOOKS.md.";
+
+    var AGENT_HELP_EMPTY =
+      "No live sessions. Deckhand only lists sessions that ping it — open IDE windows " +
+      "are not enough. Install: uv run deckhand hooks install. To try this button now: " +
+      "uv run deckhand agents demo, then Refresh.";
 
     function connectElgatoStreamDeckSocket(port, uuid, registerEvent, info, actionInfoStr) {
       pluginUUID = uuid;
@@ -94,12 +126,7 @@
       websocket = new WebSocket("ws://127.0.0.1:" + port);
       websocket.onopen = function () {
         websocket.send(JSON.stringify({ event: registerEvent, uuid: uuid }));
-        websocket.send(JSON.stringify({
-          event: "sendToPlugin",
-          action: actionInfo.action,
-          context: pluginUUID,
-          payload: { type: "getAgents" },
-        }));
+        requestAgents();
       };
 
       websocket.onmessage = function (evt) {
@@ -110,24 +137,73 @@
       };
     }
 
+    function requestAgents() {
+      if (!websocket || websocket.readyState !== WebSocket.OPEN || !actionInfo) {
+        return;
+      }
+      var select = document.getElementById("agent_id");
+      select.innerHTML = '<option value="">Loading...</option>';
+      document.getElementById("agent_help").textContent = AGENT_HELP_DEFAULT;
+      websocket.send(JSON.stringify({
+        event: "sendToPlugin",
+        action: actionInfo.action,
+        context: pluginUUID,
+        payload: { type: "getAgents" },
+      }));
+    }
+
     function handlePluginMessage(payload) {
       if (payload.type === "agentList") {
-        populateAgentDropdown(payload.agents);
+        populateAgentDropdown(payload.agents || [], payload.error, payload.core_url);
       }
     }
 
-    function populateAgentDropdown(agents) {
+    function populateAgentDropdown(agents, error, coreUrl) {
       var select = document.getElementById("agent_id");
-      select.innerHTML = '<option value="">-- Select Agent --</option>';
+      var help = document.getElementById("agent_help");
+
+      select.innerHTML = "";
+      var placeholder = document.createElement("option");
+      placeholder.value = "";
+
+      if (error) {
+        placeholder.textContent = "Failed to load agents";
+        var where = coreUrl ? (" at " + coreUrl) : "";
+        help.textContent =
+          "Could not reach Deckhand" + where + ". Check the service is running. " + error;
+      } else if (!agents.length) {
+        placeholder.textContent = "No live sessions";
+        help.textContent = AGENT_HELP_EMPTY;
+      } else {
+        placeholder.textContent = "-- Select Agent --";
+        help.textContent =
+          "Pick a live session. It disappears when that session ends; " +
+          "Refresh after starting a new one. Examples: Claude Code, Cursor, Codex, " +
+          "Antigravity — see the plugin README.";
+      }
+      select.appendChild(placeholder);
+
       agents.forEach(function (agent) {
         var opt = document.createElement("option");
         opt.value = agent.id;
-        opt.textContent = agent.id;
+        opt.textContent = agent.display_label || agent.id;
         if (agent.id === settings.agent_id) {
           opt.selected = true;
         }
         select.appendChild(opt);
       });
+
+      // Keep a previously saved agent_id even if it is temporarily missing
+      if (
+        settings.agent_id &&
+        !agents.some(function (a) { return a.id === settings.agent_id; })
+      ) {
+        var orphan = document.createElement("option");
+        orphan.value = settings.agent_id;
+        orphan.textContent = settings.agent_id + " (not registered)";
+        orphan.selected = true;
+        select.appendChild(orphan);
+      }
     }
 
     function saveSettings() {
@@ -147,6 +223,7 @@
     }
 
     document.getElementById("agent_id").addEventListener("change", saveSettings);
+    document.getElementById("refresh_agents").addEventListener("click", requestAgents);
     document.getElementById("sounds_enabled").addEventListener("change", saveSettings);
     document.getElementById("default_input").addEventListener("input", saveSettings);
     document.getElementById("auto_retry").addEventListener("change", saveSettings);

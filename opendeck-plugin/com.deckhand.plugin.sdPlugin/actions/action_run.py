@@ -11,7 +11,6 @@ import logging
 from typing import Any
 
 import websockets.asyncio.client
-
 from bridge import DeckhandBridge
 
 logger = logging.getLogger("deckhand-action-run")
@@ -85,20 +84,26 @@ class ActionRunHandler:
         """Handle Property Inspector requests (e.g., fetch action list)."""
         if payload.get("type") == "getActions":
             try:
-                session = await self.bridge._get_session()
-                async with session.get(f"{self.bridge.base_url}/actions") as resp:
-                    resp.raise_for_status()
-                    data = await resp.json()
+                actions = await self.bridge.list_actions()
                 await _send_to_property_inspector(
                     ws,
                     context,
                     {
                         "type": "actionList",
-                        "actions": data.get("actions", []),
+                        "actions": actions,
                     },
                 )
             except Exception:
                 logger.exception("Failed to fetch actions for PI")
+                await _send_to_property_inspector(
+                    ws,
+                    context,
+                    {
+                        "type": "actionList",
+                        "actions": [],
+                        "error": "Failed to fetch actions from Deckhand Core",
+                    },
+                )
 
     async def on_deckhand_event(
         self,

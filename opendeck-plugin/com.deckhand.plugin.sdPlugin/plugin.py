@@ -15,7 +15,6 @@ from typing import Any
 
 import websockets
 import websockets.asyncio.client
-
 from actions.action_run import ActionRunHandler
 from actions.agent_dashboard import AgentDashboardHandler
 from actions.agent_slot import AgentSlotHandler
@@ -164,14 +163,17 @@ async def deckhand_listener(
         diag.deckhand_connected = True
         await handle_deckhand_event(ws, event)
 
-    await bridge.subscribe_events(on_event)
+    plugin_dir = Path(__file__).parent
+    await bridge.subscribe_events(
+        on_event, refresh=lambda: resolve_connection(plugin_dir)
+    )
 
 
 async def main() -> None:
     args = parse_args()
 
-    # Resolve connection settings: env var → [client] in shared config.toml
-    # → legacy deckhand.env (deprecated). See client_config.py for details.
+    # Resolve connection settings: env var → live runtime.toml → [client]
+    # → legacy deckhand.env. See client_config.py for details.
     core_url, api_key = resolve_connection(Path(__file__).parent)
     bridge = DeckhandBridge(base_url=core_url, api_key=api_key)
     info = json.loads(args.info) if args.info else {}

@@ -82,3 +82,35 @@ input[type="checkbox"] {
   color: #888;
   padding: 4px 0;
 }
+
+.sdpi-info code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  color: #bbb;
+}
+
+.select-with-action {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.select-with-action select {
+  flex: 1;
+  min-width: 0;
+}
+
+.select-with-action button {
+  flex-shrink: 0;
+  padding: 4px 8px;
+  background-color: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: 3px;
+  color: var(--text-color);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.select-with-action button:hover {
+  border-color: var(--accent-color);
+}

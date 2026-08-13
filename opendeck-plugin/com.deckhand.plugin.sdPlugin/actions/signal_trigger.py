@@ -10,7 +10,6 @@ import logging
 from typing import Any
 
 import websockets.asyncio.client
-
 from bridge import DeckhandBridge
 
 logger = logging.getLogger("deckhand-action-signal")
