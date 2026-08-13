@@ -33,7 +33,7 @@ Capability = Literal["read-only", "state-only", "full"]
 VALID_CAPABILITIES: tuple[Capability, ...] = ("read-only", "state-only", "full")
 
 
-def _deny(capability: str, op: str) -> "PermissionError":
+def _deny(capability: str, op: str) -> PermissionError:
     return PermissionError(
         f"Plugin with capability '{capability}' is not permitted to {op}"
     )

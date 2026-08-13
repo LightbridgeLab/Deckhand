@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Optional
+import logging
 
 from deckhand.agents.base import AgentBase, AgentStatus
 from deckhand.orchestrator.events import build_event
+
+logger = logging.getLogger(__name__)
 
 
 class MockAgent(AgentBase):
@@ -13,8 +15,8 @@ class MockAgent(AgentBase):
     def __init__(
         self,
         agent_id: str,
-        project_root: Optional[str] = None,
-        active_file: Optional[str] = None,
+        project_root: str | None = None,
+        active_file: str | None = None,
     ) -> None:
         super().__init__(
             agent_id=agent_id,
@@ -23,9 +25,9 @@ class MockAgent(AgentBase):
             project_root=project_root,
             active_file=active_file,
         )
-        self._task: Optional[asyncio.Task[None]] = None
+        self._task: asyncio.Task[None] | None = None
         self._input_event = asyncio.Event()
-        self._input_value: Optional[str] = None
+        self._input_value: str | None = None
 
     async def start(self) -> None:
         if self._task is not None and not self._task.done():
@@ -81,6 +83,7 @@ class MockAgent(AgentBase):
             await self._set_status(AgentStatus.IDLE)
             raise
         except Exception as exc:
+            logger.exception("Mock agent %s failed", self.id)
             await self._set_status(AgentStatus.ERROR)
             await self._emit_event(
                 build_event(

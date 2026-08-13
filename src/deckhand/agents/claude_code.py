@@ -17,11 +17,8 @@ concurrent sessions appear as distinct Deckhand agents.
 
 from __future__ import annotations
 
-from typing import Optional
-
 from deckhand.agents.base import AgentBase, AgentStatus
 from deckhand.orchestrator.events import build_event
-
 
 # Mapping of Claude Code hook event names to the AgentStatus they imply.
 # SessionStart is handled as "ensure registered / IDLE"; SessionEnd is handled
@@ -44,8 +41,8 @@ class ClaudeCodeAgent(AgentBase):
         self,
         agent_id: str,
         session_id: str,
-        project_root: Optional[str] = None,
-        active_file: Optional[str] = None,
+        project_root: str | None = None,
+        active_file: str | None = None,
     ) -> None:
         super().__init__(
             agent_id=agent_id,

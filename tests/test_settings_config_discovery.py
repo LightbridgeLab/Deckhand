@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from deckhand.config.settings import Settings
+from deckhand.config.settings import DEFAULT_PORT, Settings
 
 
 def _isolate(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -50,7 +50,7 @@ def test_no_config_file_uses_defaults(
     settings = Settings()
     assert settings.config_file_path is None
     assert settings.host == "127.0.0.1"
-    assert settings.port == 8000
+    assert settings.port == DEFAULT_PORT
 
 
 def test_project_config_toml_is_picked_up(

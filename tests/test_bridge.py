@@ -22,6 +22,7 @@ async def client(monkeypatch):
 
     # Import after env is set so Settings picks up the key
     import importlib
+
     import deckhand.main as main_mod
 
     importlib.reload(main_mod)
@@ -124,6 +125,16 @@ async def test_list_state(client: AsyncClient) -> None:
     assert isinstance(resp.json(), list)
 
 
+async def test_list_state_key_catalog(client: AsyncClient) -> None:
+    """GET /catalog/state_keys returns the config catalog shape."""
+    resp = await client.get("/catalog/state_keys")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "entries" in data
+    assert isinstance(data["entries"], list)
+    assert "config" in data
+
+
 async def test_list_actions(client: AsyncClient) -> None:
     """Bridge can discover available actions via GET /actions."""
     resp = await client.get("/actions")
@@ -184,6 +195,38 @@ async def test_register_agent(client: AsyncClient) -> None:
     resp2 = await client.get("/agents")
     ids = [a["id"] for a in resp2.json()]
     assert "ext-1" in ids
+
+
+async def test_register_mock_agent(client: AsyncClient) -> None:
+    """agent_type=mock creates a MockAgent that can start."""
+    resp = await client.post(
+        "/agents/register",
+        json={
+            "agent_id": "demo-1",
+            "agent_type": "mock",
+            "project_root": "/tmp/deckhand-demo",
+        },
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["id"] == "demo-1"
+    assert data["type"] == "mock"
+    assert data["display_label"] == "mock: deckhand-demo"
+
+    start = await client.post("/agents/demo-1/start")
+    assert start.status_code == 200
+
+
+async def test_unregister_agent(client: AsyncClient) -> None:
+    await client.post(
+        "/agents/register",
+        json={"agent_id": "tmp-1", "agent_type": "external"},
+    )
+    resp = await client.delete("/agents/tmp-1")
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "unregistered"
+    ids = [a["id"] for a in (await client.get("/agents")).json()]
+    assert "tmp-1" not in ids
 
 
 async def test_register_agent_duplicate(client: AsyncClient) -> None:

@@ -12,6 +12,7 @@ from deckhand.plugins.claude_code_usage import register as ccu_register
 from deckhand.plugins.registry import PluginRegistry
 
 
+@pytest.mark.asyncio
 async def test_on_shutdown_runs_registered_hook(
     plugin_registry: PluginRegistry,
 ) -> None:
@@ -25,6 +26,7 @@ async def test_on_shutdown_runs_registered_hook(
     assert calls == [1]
 
 
+@pytest.mark.asyncio
 async def test_run_shutdown_runs_all_hooks_even_if_one_fails(
     plugin_registry: PluginRegistry,
 ) -> None:
@@ -49,10 +51,12 @@ async def test_run_shutdown_runs_all_hooks_even_if_one_fails(
     assert ran == ["first", "boom", "last"]
 
 
+@pytest.mark.asyncio
 async def test_no_hooks_registered_is_noop(plugin_registry: PluginRegistry) -> None:
     await plugin_registry.run_shutdown_hooks()  # must not raise
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize("capability", ["read-only", "state-only"])
 async def test_scoped_registry_forwards_shutdown_hook_to_base(
     plugin_registry: PluginRegistry, capability: str
@@ -71,6 +75,7 @@ async def test_scoped_registry_forwards_shutdown_hook_to_base(
     assert ran == ["scoped"]
 
 
+@pytest.mark.asyncio
 async def test_claude_code_usage_plugin_registers_shutdown_hook(
     plugin_registry: PluginRegistry,
     monkeypatch: pytest.MonkeyPatch,

@@ -8,7 +8,6 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any
 
-
 # Scope hierarchy: write implies read
 SCOPE_LEVELS = {"read": 1, "write": 2}
 
@@ -97,7 +96,7 @@ def validate_payload(
 class RateLimiter:
     """Simple fixed-window rate limiter keyed by client IP address."""
 
-    def __init__(self, requests_per_minute: int = 60) -> None:
+    def __init__(self, requests_per_minute: int = 600) -> None:
         self.rpm = requests_per_minute
         self._windows: dict[str, list[float]] = defaultdict(list)
 

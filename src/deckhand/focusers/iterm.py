@@ -90,6 +90,7 @@ def _run_osascript(script: str, session_id: str) -> None:
             capture_output=True,
             text=True,
             timeout=5,
+            check=False,
         )
     except FileNotFoundError:
         logger.warning("osascript not available; iTerm focuser is a no-op")

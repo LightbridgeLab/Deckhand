@@ -6,7 +6,7 @@ import asyncio
 
 import pytest
 
-from deckhand.orchestrator.events import EventBus, build_event, build_error_event
+from deckhand.orchestrator.events import EventBus, build_error_event, build_event
 
 
 async def test_websocket_subscription() -> None:
@@ -86,7 +86,7 @@ async def test_dead_subscriber_cleanup() -> None:
 
         async def send_json(self, data: dict) -> None:
             if self.should_fail:
-                raise Exception("Connection closed")
+                raise RuntimeError("Connection closed")
             received.append(data)
 
     ws1 = MockWebSocket(should_fail=True)

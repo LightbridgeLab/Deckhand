@@ -5,6 +5,7 @@ import json
 import logging
 import time
 from contextlib import asynccontextmanager
+from typing import Annotated
 
 from fastapi import (
     Body,
@@ -17,7 +18,6 @@ from fastapi import (
 )
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
@@ -25,6 +25,7 @@ from deckhand.agents.claude_code import ClaudeCodeAgent
 from deckhand.agents.cursor import CursorAgent
 from deckhand.agents.pending_input import PendingInputTracker
 from deckhand.agents.summary import update_cursor_summary
+from deckhand.config.runtime import write_runtime
 from deckhand.config.settings import Settings
 from deckhand.event_log import EventLogger
 from deckhand.focusers.cursor import make_cursor_focuser
@@ -93,6 +94,7 @@ async def lifespan(app: FastAPI):
         f"  Event log: {'enabled @ ' + str(settings.event_log_path) if settings.event_log_enabled else 'disabled'}"
     )
     logger.info(f"  Plugins: {', '.join(settings.plugin_modules)}")
+    write_runtime(settings.host, settings.port)
 
     if settings._generated_key:
         logger.warning(
@@ -106,8 +108,9 @@ async def lifespan(app: FastAPI):
     # Initialize rate limiter
     rate_limiter = RateLimiter(settings.rate_limit_rpm)
 
-    # Initialize orchestrator. Agents are registered on demand via the
-    # Claude Code / Cursor hook handlers or POST /agents/register — no
+    # Initialize orchestrator. Agents are registered on demand via session
+    # hooks (`deckhand hooks install` → Claude Code / Cursor ingest), 
+    # POST /agents/register, or ``deckhand agents demo`` — no
     # framework-style default agents under the v0.3 positioning.
     orchestrator = Orchestrator(
         state_persist_path=settings.state_file_path,
@@ -457,36 +460,80 @@ async def provide_input(agent_id: str, payload: InputPayload) -> dict[str, str]:
 
 @app.post("/agents/register", dependencies=[Depends(require_write)])
 async def register_agent(payload: AgentRegisterPayload) -> dict[str, object]:
-    """Register a new external agent with optional project context."""
+    """Register a new agent with optional project context.
+
+    ``agent_type="mock"`` creates a :class:`~deckhand.agents.mock.MockAgent`
+    (useful for Property Inspector testing via ``deckhand agents demo``).
+    Any other type creates a placeholder external agent.
+    """
     if orchestrator is None:
         raise HTTPException(status_code=503, detail="Service not initialized")
 
     if orchestrator.get_agent(payload.agent_id) is not None:
         raise HTTPException(status_code=409, detail="agent already registered")
 
-    from deckhand.agents.base import AgentBase, AgentStatus
+    from deckhand.agents.base import AgentBase
 
-    class ExternalAgent(AgentBase):
-        """Placeholder agent for externally-managed processes."""
+    if payload.agent_type == "mock":
+        from deckhand.agents.mock import MockAgent
 
-        async def start(self) -> None:
-            await self._set_status(AgentStatus.RUNNING)
+        agent: AgentBase = MockAgent(
+            agent_id=payload.agent_id,
+            project_root=payload.project_root,
+            active_file=payload.active_file,
+        )
+    else:
+        from deckhand.agents.base import AgentStatus
 
-        async def cancel(self) -> None:
-            await self._set_status(AgentStatus.IDLE)
+        class ExternalAgent(AgentBase):
+            """Placeholder agent for externally-managed processes."""
 
-        async def provide_input(self, text: str) -> None:
-            pass
+            async def start(self) -> None:
+                await self._set_status(AgentStatus.RUNNING)
 
-    agent = ExternalAgent(
-        agent_id=payload.agent_id,
-        agent_type=payload.agent_type,
-        capabilities=payload.capabilities,
-        project_root=payload.project_root,
-        active_file=payload.active_file,
-    )
+            async def cancel(self) -> None:
+                await self._set_status(AgentStatus.IDLE)
+
+            async def provide_input(self, text: str) -> None:
+                pass
+
+        agent = ExternalAgent(
+            agent_id=payload.agent_id,
+            agent_type=payload.agent_type,
+            capabilities=payload.capabilities,
+            project_root=payload.project_root,
+            active_file=payload.active_file,
+        )
+
     orchestrator.register_agent(agent)
+    await orchestrator.event_bus.emit(
+        build_event(
+            "agent.registered",
+            {"kind": "agent", "id": agent.id},
+            {"agent": agent.as_dict()},
+        )
+    )
     return agent.as_dict()
+
+
+@app.delete("/agents/{agent_id}", dependencies=[Depends(require_write)])
+async def unregister_agent(agent_id: str) -> dict[str, object]:
+    """Unregister an agent (e.g. remove a demo agent)."""
+    if orchestrator is None:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+
+    removed = orchestrator.unregister_agent(agent_id)
+    if removed is None:
+        raise HTTPException(status_code=404, detail="agent not found")
+
+    await orchestrator.event_bus.emit(
+        build_event(
+            "agent.unregistered",
+            {"kind": "agent", "id": agent_id},
+            {"agent_id": agent_id, "reason": "api_delete"},
+        )
+    )
+    return {"status": "unregistered", "agent_id": agent_id}
 
 
 def _claude_code_agent_id(session_id: str) -> str:
@@ -668,8 +715,10 @@ async def update_agent_context(
 @app.post("/actions/{action_name}", dependencies=[Depends(require_write)])
 async def run_action(
     action_name: str,
-    payload: dict[str, object] = Body(default_factory=dict),
+    payload: Annotated[dict[str, object] | None, Body()] = None,
 ) -> dict[str, str]:
+    if payload is None:
+        payload = {}
     if action_registry is None or orchestrator is None:
         raise HTTPException(status_code=503, detail="Service not initialized")
 
@@ -752,8 +801,10 @@ async def get_action_metadata(action_name: str) -> dict[str, object]:
 @app.post("/signals/webhook/{signal_name}", dependencies=[Depends(require_write)])
 async def handle_webhook_signal(
     signal_name: str,
-    payload: dict[str, object] = Body(default_factory=dict),
+    payload: Annotated[dict[str, object] | None, Body()] = None,
 ) -> dict[str, str]:
+    if payload is None:
+        payload = {}
     if signal_registry is None or orchestrator is None:
         raise HTTPException(status_code=503, detail="Service not initialized")
 
@@ -851,6 +902,32 @@ async def get_state(state_key: str) -> dict[str, object]:
 
 
 # ---------------------------------------------------------------------------
+# Catalog routes (read-only) — Data Widget PI discovery
+# ---------------------------------------------------------------------------
+
+
+@app.get("/catalog/state_keys", dependencies=[Depends(require_read)])
+async def list_state_key_catalog() -> dict[str, object]:
+    """Return ``[catalog.state_keys]`` entries from the service config.
+
+    Used by the OpenDeck Data Widget Property Inspector when the plugin
+    process cannot see the same ``config.toml`` as the CLI (common when
+    OpenDeck's cwd is the Plugins folder). Re-reads the config file on
+    each request so ``deckhand catalog sync`` is visible without a
+    service restart.
+    """
+    if settings is None:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    from deckhand.catalog.state_keys import load_state_key_entries
+
+    entries = load_state_key_entries(settings.config_file_path)
+    return {
+        "config": settings.config_file_path,
+        "entries": [e.as_dict() for e in entries],
+    }
+
+
+# ---------------------------------------------------------------------------
 # WebSocket events — first-message auth handshake
 # ---------------------------------------------------------------------------
 
@@ -894,7 +971,7 @@ async def events(websocket: WebSocket) -> None:
 
         await websocket.send_json({"type": "auth_ok", "scope": entry.scope})
 
-    except asyncio.TimeoutError:
+    except TimeoutError:
         logger.warning("WS auth failed: handshake timed out", extra=ws_ctx)
         await websocket.close(code=4001, reason="Auth handshake timed out")
         return

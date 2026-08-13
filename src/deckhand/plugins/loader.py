@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import importlib
 import logging
-from typing import Iterable, Union
+from collections.abc import Iterable
 
 from deckhand.plugins.capabilities import (
     PluginSpec,
@@ -12,7 +12,7 @@ from deckhand.plugins.registry import PluginRegistry
 
 logger = logging.getLogger(__name__)
 
-PluginEntry = Union[str, PluginSpec]
+PluginEntry = str | PluginSpec
 
 
 def load_plugins(entries: Iterable[PluginEntry], registry: PluginRegistry) -> None:

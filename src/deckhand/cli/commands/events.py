@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 import os
 import time
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
 from deckhand.cli.client import DeckhandClient
 from deckhand.cli.formatters import emit_json
@@ -93,6 +93,5 @@ def _file_was_replaced_or_truncated(path: Path, fh, last_pos: int) -> bool:
 
     if path_stat.st_ino != fh_stat.st_ino:
         return True  # path now points at a different inode (rotated)
-    if path_stat.st_size < last_pos:
-        return True  # file truncated under us
-    return False
+    # True when the file was truncated under us.
+    return path_stat.st_size < last_pos

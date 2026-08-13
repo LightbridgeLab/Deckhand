@@ -14,7 +14,7 @@ when the next hook fires from each session.
 from __future__ import annotations
 
 import logging
-from typing import Awaitable, Callable
+from collections.abc import Awaitable, Callable
 
 logger = logging.getLogger(__name__)
 

@@ -4,10 +4,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
+from collections.abc import AsyncIterator, Iterator
 from contextlib import contextmanager
-from typing import Any, AsyncIterator, Iterator
+from typing import Any, Self
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 
 class DeckhandError(RuntimeError):
@@ -45,7 +49,7 @@ class DeckhandClient:
     def close(self) -> None:
         self._client.close()
 
-    def __enter__(self) -> "DeckhandClient":
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(self, *exc: object) -> None:
@@ -62,7 +66,7 @@ class DeckhandClient:
             detail: str
             try:
                 detail = response.json().get("detail", response.text)
-            except Exception:
+            except (ValueError, TypeError, KeyError, AttributeError):
                 detail = response.text
             raise DeckhandError(response.status_code, str(detail))
         if response.content:
@@ -105,6 +109,12 @@ class DeckhandClient:
             "POST", f"/agents/{agent_id}/input", json_body={"text": text}
         )
 
+    def register_agent(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self._request("POST", "/agents/register", json_body=payload)
+
+    def unregister_agent(self, agent_id: str) -> dict[str, Any]:
+        return self._request("DELETE", f"/agents/{agent_id}")
+
     # Hooks
     def post_claude_code_hook(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self._request("POST", "/agents/claude-code/hook", json_body=payload)
@@ -133,6 +143,7 @@ class DeckhandClient:
                     async for evt in self._aevents():
                         await queue.put(evt)
                 except Exception as exc:
+                    logger.exception("WebSocket event stream failed")
                     await queue.put({"__error__": str(exc)})
                 finally:
                     await queue.put(None)
@@ -154,7 +165,7 @@ class DeckhandClient:
                 task.cancel()
                 try:
                     loop.run_until_complete(task)
-                except (asyncio.CancelledError, Exception):
+                except asyncio.CancelledError:
                     pass
         finally:
             loop.close()

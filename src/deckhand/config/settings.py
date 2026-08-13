@@ -7,11 +7,15 @@ import os
 from pathlib import Path
 from typing import Any
 
+from deckhand.catalog.state_keys import StateKeyEntry, parse_state_key_entries
 from deckhand.config.loader import load_config, resolve_project_path
 from deckhand.plugins.capabilities import VALID_CAPABILITIES, PluginSpec
 from deckhand.security import ApiKeyEntry, generate_api_key
 
 logger = logging.getLogger(__name__)
+
+# Avoid 8000/8080 — those are the first ports every other local server grabs.
+DEFAULT_PORT = 18765
 
 
 def _parse_bool(value: str | bool) -> bool:
@@ -61,17 +65,19 @@ class Settings:
         # Default values
         self.service_name = "deckhand"
         self.host = "127.0.0.1"
-        self.port = 8000
+        self.port = DEFAULT_PORT
         # No default plugins — users opt in to specific plugins (e.g.
         # ``deckhand.plugins.claude_code_usage``) via config.toml.
         self.plugin_specs: list[PluginSpec] = []
         self.config_file_path: str | None = None
         self.state_file_path: str | None = None
-        self.rate_limit_rpm: int = 60
+        self.rate_limit_rpm: int = 600
         self.log_level: str = "INFO"
         self.log_format: str = "plain"  # "plain" or "json"
         self.event_log_enabled: bool = False
         self._event_log_path_raw: str = ".deckhand/events.log"
+        # Data Widget PI options from [catalog.state_keys] (not live store keys).
+        self.state_key_catalog: list[StateKeyEntry] = []
 
         # Auth: list of {key, scope} dicts
         self._raw_api_keys: list[dict[str, str]] = []
@@ -176,6 +182,10 @@ class Settings:
                 self.event_log_enabled = _parse_bool(el_config["enabled"])
             if "path" in el_config:
                 self._event_log_path_raw = str(el_config["path"])
+
+        catalog = config.get("catalog")
+        if isinstance(catalog, dict):
+            self.state_key_catalog = parse_state_key_entries(catalog.get("state_keys"))
 
     def _load_auth(self, auth_config: dict[str, Any]) -> None:
         """Parse the [auth] section."""
