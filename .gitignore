@@ -7,3 +7,12 @@ config.toml
 opendeck-plugin/com.deckhand.plugin.sdPlugin/deckhand.env
 .DS_Store
 .deckhand/
+
+# Local agent settings (generated commands/rules stay tracked)
+.claude/settings.local.json
+.cursor/plans/
+
+# Build and test artifacts
+dist/
+.pytest_cache/
+opendeck-plugin/.pytest_cache/

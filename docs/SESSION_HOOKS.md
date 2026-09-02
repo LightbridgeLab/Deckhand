@@ -15,7 +15,7 @@ A session appears in Deckhand only after a coding agent **pings** the local Core
 
 Claude Code and Cursor have full lifecycle adapters (status transitions, session end, focus where supported).
 
-From a Deckhand checkout (after `uv sync`), prefix with `uv run`. There is no `uvw` wrapper.
+From a Deckhand checkout (after `uv sync`), prefix with `uv run`.
 
 ```bash
 # Core must be running (make dev / make start)
@@ -41,6 +41,8 @@ Then:
 2. `deckhand agents list` — or click **Refresh** on Agent Status.
 3. Pick the session on the button.
 
+Dropdown labels are `{tool}: {project folder}` (e.g. `Claude: backend`, `Cursor: Deckhand`). Two sessions in the same folder get a short extra bit (session id, or the Cursor prompt).
+
 ### Try the button without IDE hooks
 
 ```bash
@@ -60,48 +62,25 @@ Each agent event pipes JSON on stdin to:
 
 Ingest failures are logged to `~/.deckhand/hooks.log` and exit 0 so they do not break the coding session. Use `uv run deckhand hooks status` to see the last error.
 
-Reference JSON (same shape install writes): [`examples/claude_code_hooks.json`](../examples/claude_code_hooks.json), [`examples/cursor_hooks.json`](../examples/cursor_hooks.json).
+Reference JSON (same shape install writes): [`claude_code_hooks.json`](examples/claude_code_hooks.json), [`cursor_hooks.json`](examples/cursor_hooks.json).
 
-## Other agents (examples, not a support matrix)
+## Other agents (register contract)
 
-Full status lifecycle (running / awaiting input / session end) is **first-party for Claude Code and Cursor only**. Other tools can still put a row in the Agent Status dropdown by registering on session start.
+Full status lifecycle (running / awaiting input / session end) is **first-party for Claude Code and Cursor only**. Other tools can still appear in the Agent Status dropdown by registering on session start.
 
-**Contract:** on session start, `POST /agents/register` with a JSON body:
+**Contract:** `POST /agents/register` with a write-scoped API key:
 
 ```json
 {
-  "agent_id": "codex-abc12345",
-  "agent_type": "codex",
+  "agent_id": "mytool-abc12345",
+  "agent_type": "mytool",
   "project_root": "/path/to/project"
 }
 ```
 
-Use a write-scoped API key (`Authorization: Bearer …`). The agent stays until you `DELETE /agents/{agent_id}` (or Core restarts without persistence). Status stays a simple placeholder unless you build a dedicated adapter.
+The agent stays until you `DELETE /agents/{agent_id}` (or Core restarts without persistence). Status stays a placeholder unless you build a dedicated adapter.
 
-### Codex (example — register only)
-
-Codex CLI hooks live in `~/.codex/hooks.json` (feature may need enabling in Codex config). Example SessionStart command shape:
-
-```bash
-# Illustrative — map Codex stdin fields to agent_id / project_root for your version
-jq -c '{agent_id: ("codex-" + .session_id[0:8]), agent_type: "codex", project_root: .cwd}' \
-  | curl -sS -X POST "${DECKHAND_URL:-http://127.0.0.1:18765}/agents/register" \
-      -H "Authorization: Bearer ${DECKHAND_API_KEY}" \
-      -H 'Content-Type: application/json' \
-      --data-binary @-
-```
-
-Prefer wrapping that in a small script that reads `config.toml` like `deckhand hooks ingest` does. Deckhand does not ship a Codex adapter.
-
-### Antigravity (example — register only)
-
-Antigravity / `agy` looks for hooks in `~/.gemini/config/hooks.json` or workspace `.agents/hooks.json`. Upstream support differs between CLI and IDE builds — verify hooks actually fire in your build before relying on them.
-
-Same register contract as above with `agent_type: "antigravity"`. Usage bars (`usage.antigravity.*`) are a separate plugin and do not require session hooks.
-
-### Anything else
-
-If the tool can run a shell command on session start with JSON on stdin, point it at `POST /agents/register`. We will not document every coding agent.
+If the tool can run a shell command on session start with JSON on stdin, point it at `POST /agents/register` (or wrap `deckhand hooks ingest` if you add a custom ingest path). Usage bars for Antigravity (`usage.antigravity.*`) are a separate plugin and do not require session hooks.
 
 ## Verify
 

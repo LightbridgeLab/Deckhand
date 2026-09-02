@@ -6,7 +6,7 @@ If you're touching the code, the principles below capture how the project is sha
 
 ## Core Principles
 
-1. **AI coding agents are the point, not an example.** The "agent" abstraction exists because Claude Code and Cursor sessions are the load-bearing first-party use case. Everything else (signals, custom plugins, raw state) is supporting cast. Don't reintroduce the framework-era framing where agents were "one kind of plugin." That stretched the platform thin.
+1. **AI coding agents are the point, not an example.** The "agent" abstraction exists because Claude Code and Cursor sessions are the first-party use case. Everything else (signals, custom plugins, raw state) is supporting cast.
 
 2. **Thin client, smart core.** The Stream Deck (or OpenDeck) is a button surface for display and presses. Orchestration, state, decisions, and lifecycle live in the local Deckhand service. Clients should never re-implement business logic.
 
@@ -48,7 +48,7 @@ Use `build_event(...)` / `build_error_event(...)` from `deckhand.orchestrator.ev
 
 ## Scope (deliberate non-goals)
 
-- **macOS-first** in v0.3. The iTerm focuser is AppleScript-based. Linux and Windows ports are interesting but unscoped.
+- **macOS-first.** The iTerm focuser is AppleScript-based. Linux and Windows ports are interesting but unscoped.
 - **OpenDeck-first.** Elgato Stream Deck plugin port is planned; until it lands, OpenDeck is the only client.
 - **Concrete usage adapters, not a federation layer.** Today: Claude Code (in-process OAuth), Antigravity (in-process `agy` Keychain OAuth → Cloud Code Gemini session/week), and Cursor (local IDE JWT → Spending dashboard pools). Do not add another quota provider until there is a concrete need and a thin adapter to test against. Do not vendor caut/CodexBar or reintroduce local JSONL burn analytics in core — point power users at companion CLIs for historical cost dashboards.
 - **No multi-user, no cloud sync, no remote agents.** Service is single-user, single-machine.

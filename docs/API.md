@@ -22,8 +22,10 @@ Get all registered agents.
   {
     "id": "mock-1",
     "type": "mock",
+    "type_label": "Demo",
     "status": "idle",
-    "capabilities": []
+    "capabilities": ["accepts_text", "cancellable"],
+    "display_label": "Demo: project-alpha"
   }
 ]
 ```
@@ -224,12 +226,9 @@ Get all registered signals with metadata.
 {
   "signals": [
     {
-      "name": "camera.motion",
-      "description": "Handle camera motion detection webhook",
-      "payload_schema": {
-        "key": {"type": "string", "required": false},
-        "active": {"type": "boolean", "required": false, "default": true}
-      }
+      "name": "agents.focus_next_pending",
+      "description": "Focus the oldest session waiting on input",
+      "payload_schema": {}
     }
   ]
 }
@@ -249,18 +248,17 @@ Get metadata for a specific signal.
 **Response:**
 ```json
 {
-  "name": "camera.motion",
-  "description": "Handle camera motion detection webhook",
+  "name": "session.hook_received",
+  "description": "Ingest a session hook payload from an external agent",
   "payload_schema": {
-    "key": {"type": "string", "required": false},
-    "active": {"type": "boolean", "required": false, "default": true}
+    "agent_type": {"type": "string", "required": true}
   }
 }
 ```
 
 **Example:**
 ```bash
-curl http://127.0.0.1:18765/signals/camera.motion
+curl http://127.0.0.1:18765/signals/session.hook_received
 ```
 
 **Errors:**
@@ -275,9 +273,9 @@ Ingest an external event via webhook.
 **Request Body:**
 ```json
 {
-  "key": "camera.front_door.motion",
-  "active": true,
-  "ttl_seconds": 30
+  "agent_type": "claude_code",
+  "session_id": "abcdef01",
+  "cwd": "/path/to/project"
 }
 ```
 
@@ -288,9 +286,9 @@ Ingest an external event via webhook.
 
 **Example:**
 ```bash
-curl -X POST http://127.0.0.1:18765/signals/webhook/camera.motion \
+curl -X POST http://127.0.0.1:18765/signals/webhook/session.hook_received \
   -H "Content-Type: application/json" \
-  -d '{"key": "camera.front_door.motion", "active": true}'
+  -d '{"agent_type": "claude_code", "session_id": "abcdef01", "cwd": "/path/to/project"}'
 ```
 
 **Errors:**
@@ -309,8 +307,8 @@ Get all state entries.
 ```json
 [
   {
-    "key": "camera.front_door.motion",
-    "value": {"active": true},
+    "key": "usage.claude_code.session",
+    "value": {"percent": 36, "title": "Session\n36%"},
     "updated_at": 1234567890.0,
     "expires_at": 1234567920.0
   }
@@ -340,7 +338,7 @@ Get state for a specific key.
 
 **Example:**
 ```bash
-curl http://127.0.0.1:18765/state/camera.front_door.motion
+curl http://127.0.0.1:18765/state/usage.claude_code.session
 ```
 
 **Errors:**

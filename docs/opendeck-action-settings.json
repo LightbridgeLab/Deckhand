@@ -6,6 +6,11 @@
       "agent_id": { "type": "string", "discovery": "agents", "default": "" },
       "default_input": { "type": "string", "default": "" },
       "sounds_enabled": { "type": "boolean", "default": true },
+      "sound_name": {
+        "type": "string",
+        "default": "Glass",
+        "note": "macOS system sound played on this computer when the bound session needs input. Ignored when sounds_enabled is false."
+      },
       "auto_retry": { "type": "boolean", "default": false },
       "retry_max": { "type": "integer", "enum": [1, 2, 3, 5], "default": 3 }
     }
@@ -15,10 +20,20 @@
     "property_inspector": "propertyInspector/agent_slot.html",
     "fields": {
       "slot_index": { "type": "integer", "enum": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], "default": 1 },
-      "agent_filter": { "type": "string", "default": "cursor" },
+      "agent_filter": {
+        "type": "enum",
+        "values": ["*", "claude_code", "cursor", "mock"],
+        "default": "cursor",
+        "note": "Which sessions fill this slot. Slot index is the Nth session of this filter, not deck position. Aliases: claude → claude_code."
+      },
       "page": { "type": "integer", "enum": [1, 2], "default": 1 },
       "default_input": { "type": "string", "default": "" },
-      "sounds_enabled": { "type": "boolean", "default": true }
+      "sounds_enabled": { "type": "boolean", "default": true },
+      "sound_name": {
+        "type": "string",
+        "default": "Glass",
+        "note": "macOS system sound played on this computer when the bound session needs input. Ignored when sounds_enabled is false."
+      }
     }
   },
   "com.deckhand.widget": {
@@ -67,7 +82,12 @@
     "label": "Agent Dashboard",
     "property_inspector": "propertyInspector/agent_dashboard.html",
     "fields": {
-      "agent_filter": { "type": "string", "default": "*" },
+      "agent_filter": {
+        "type": "enum",
+        "values": ["*", "claude_code", "cursor", "mock"],
+        "default": "*",
+        "note": "Which sessions the dashboard summarizes. Aliases: claude → claude_code."
+      },
       "default_input": { "type": "string", "default": "" }
     }
   }

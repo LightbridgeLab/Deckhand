@@ -1,5 +1,6 @@
 .PHONY: help install config \
 	dev start stop restart status logs \
+	menubar install-menubar \
 	catalog-sync cli \
 	test lint format check clean \
 	opendeck-plugin-install \
@@ -146,6 +147,32 @@ logs: ## Tail background server log
 		exit 1; \
 	fi
 	tail -f "$(LOG_FILE)"
+
+# ── Menu Bar (macOS) ──────────────────────────────────────────────────────────
+
+##@ Menu Bar (macOS)
+
+menubar: _deckhand-dir ## Build, start background service, and launch macOS Menu Bar app
+	@if [ ! -f .deckhand/DeckhandMenu ] || [ src/mac/DeckhandMenu.swift -nt .deckhand/DeckhandMenu ]; then \
+		printf "$(DIM)Compiling DeckhandMenu.swift …$(RESET)\n"; \
+		/usr/bin/swiftc -O src/mac/DeckhandMenu.swift -o .deckhand/DeckhandMenu; \
+	fi
+	@$(MAKE) --no-print-directory start
+	@if pgrep -f ".deckhand/DeckhandMenu" >/dev/null 2>&1; then \
+		printf "$(YELLOW)DeckhandMenu is already running$(RESET)\n"; \
+	else \
+		nohup .deckhand/DeckhandMenu >/dev/null 2>&1 & \
+		printf "$(GREEN)Deckhand Menu Bar app started$(RESET) (icon in top right next to clock)\n"; \
+	fi
+
+install-menubar: _deckhand-dir ## Install Deckhand.app into ~/Applications for Login Items
+	@printf "$(DIM)Compiling DeckhandMenu.swift …$(RESET)\n"
+	@/usr/bin/swiftc -O src/mac/DeckhandMenu.swift -o .deckhand/DeckhandMenu
+	@mkdir -p "$(HOME)/Applications/Deckhand.app/Contents/MacOS"
+	@cp .deckhand/DeckhandMenu "$(HOME)/Applications/Deckhand.app/Contents/MacOS/DeckhandMenu"
+	@printf '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0">\n<dict>\n\t<key>CFBundleExecutable</key>\n\t<string>DeckhandMenu</string>\n\t<key>CFBundleIdentifier</key>\n\t<string>com.deckhand.menubar</string>\n\t<key>CFBundleName</key>\n\t<string>Deckhand</string>\n\t<key>CFBundlePackageType</key>\n\t<string>APPL</string>\n\t<key>CFBundleShortVersionString</key>\n\t<string>0.4.1</string>\n\t<key>LSUIElement</key>\n\t<true/>\n</dict>\n</plist>\n' > "$(HOME)/Applications/Deckhand.app/Contents/Info.plist"
+	@printf "$(GREEN)Installed$(RESET) to $(HOME)/Applications/Deckhand.app\n"
+	@printf "$(DIM)You can add it to System Settings → General → Login Items to start on login.$(RESET)\n"
 
 # ── Catalog / CLI ─────────────────────────────────────────────────────────────
 

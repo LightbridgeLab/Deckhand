@@ -42,8 +42,8 @@ Emitted when state is updated.
 **Payload:**
 ```json
 {
-  "key": "camera.front_door.motion",
-  "value": {"active": true},
+  "key": "usage.claude_code.session",
+  "value": {"percent": 36, "title": "Session\n36%"},
   "updated_at": 1234567890.0,
   "expires_at": 1234567920.0
 }
@@ -59,10 +59,10 @@ Emitted when state is updated.
 ```json
 {
   "type": "state.changed",
-  "source": {"kind": "signal", "id": "camera.motion"},
+  "source": {"kind": "plugin", "id": "claude_code_usage"},
   "payload": {
-    "key": "camera.front_door.motion",
-    "value": {"active": true},
+    "key": "usage.claude_code.session",
+    "value": {"percent": 36, "title": "Session\n36%"},
     "updated_at": 1234567890.0,
     "expires_at": 1234567920.0
   },
@@ -88,9 +88,9 @@ Emitted when state is cleared.
 ```json
 {
   "type": "state.cleared",
-  "source": {"kind": "state", "id": "camera.front_door.motion"},
+  "source": {"kind": "state", "id": "usage.claude_code.session"},
   "payload": {
-    "key": "camera.front_door.motion"
+    "key": "usage.claude_code.session"
   },
   "ts": 1234567890.0,
   "version": "1.0"
@@ -219,18 +219,18 @@ Standardized error event.
 
 Plugins can emit custom events using `build_event()`. Use descriptive event type names with namespaces:
 
-- `lights.changed`
-- `camera.motion_detected`
-- `sensor.temperature_updated`
+- `agent.status_changed`
+- `usage.updated`
+- `session.registered`
 
 **Example:**
 ```python
 from deckhand.orchestrator.events import build_event
 
 await registry.events.emit(build_event(
-    "lights.changed",
-    {"kind": "action", "id": "lights.turn_on"},
-    {"room": "living_room", "state": "on"},
+    "usage.updated",
+    {"kind": "plugin", "id": "my_usage_plugin"},
+    {"provider": "claude_code", "percent": 42},
 ))
 ```
 
@@ -248,9 +248,9 @@ The `source` field identifies where an event originated:
 
 - **`id`**: Specific identifier
   - Action name (e.g., `"agent.start"`)
-  - Signal name (e.g., `"camera.motion"`)
+  - Signal name (e.g., `"session.hook_received"`)
   - API endpoint (e.g., `"actions.run"`)
-  - State key (e.g., `"camera.front_door.motion"`)
+  - State key (e.g., `"usage.claude_code.session"`)
   - Agent ID (e.g., `"mock-1"`)
 
 ## Event Versioning
