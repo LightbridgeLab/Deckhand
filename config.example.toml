@@ -58,7 +58,9 @@ modules = [
 # enabled = true
 
 [paths]
-# Path to JSON file for persisting state across restarts (optional)
+# Path to JSON file for persisting state across restarts (optional).
+# Also shrinks the window where catalogued usage keys 404 after a restart
+# (GET /state/{key} is 404 until a plugin publishes; Data Widgets show "—").
 # state_file = "state.json"
 
 [auth]
@@ -93,6 +95,8 @@ modules = [
 # (sync adds curated keys for enabled plugins + any keys currently in the
 # live state store, without overwriting dropdown_label/image/format/button_title
 # you already set).
+# Listing a key here does not put it in the live store. GET /state/{key}
+# returns 404 until a plugin publishes it; Data Widgets show "—" meanwhile.
 #
 # dropdown_label: name in the State Key menu (not drawn on the key).
 # button_title: first line on the key; omit to use live short_label.

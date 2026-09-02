@@ -41,7 +41,7 @@ make opendeck-plugin-install             # copies plugin into OpenDeck
 # optional: make menubar                 # macOS menu-bar control for Core
 ```
 
-Restart OpenDeck. Drag **Data Widget** onto a button, pick a state key (e.g. Claude session usage), set display format to `percentage`. Within ~60 seconds the button updates.
+Restart OpenDeck. Drag **Data Widget** onto a button, pick a state key (e.g. Claude session usage), set display format to `percentage`. The button shows `—` (and Core may log `GET /state/… 404`) until the first poll; that is expected. Within ~60 seconds the button updates.
 
 Full walkthrough: **[Getting started](docs/GETTING_STARTED.md)** · Usage keys: **[Usage widgets](docs/USAGE.md)**
 

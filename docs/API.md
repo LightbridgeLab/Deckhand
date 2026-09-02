@@ -342,7 +342,9 @@ curl http://127.0.0.1:18765/state/usage.claude_code.session
 ```
 
 **Errors:**
-- `404`: State not found
+- `404`: State not found — the key is not in the live store. A key listed in `[catalog.state_keys]` can still 404 until a plugin publishes it (first successful poll, or Claude Code's first-failure placeholder). Clients should treat 404 as "no value yet" (Data Widgets show `—`). Unknown keys that were never catalogued also 404.
+
+See [USAGE.md](USAGE.md#catalog-vs-live-values).
 
 ## Events (WebSocket)
 
