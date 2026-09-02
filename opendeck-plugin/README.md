@@ -52,6 +52,7 @@ Displays a Deckhand state key on the button face. Updates in real time via WebSo
 - State key from `[catalog.state_keys]` in `config.toml` (or Core `GET /catalog/state_keys`)
 - Display formats: `raw`, `percentage`, `boolean`, `number`, `summary`, `currency`
 - On press: `peek` (flash time-until-reset), `action`, `both`, or `none`
+- Until Core publishes the key, the button shows `—`. A 404 from `GET /state/{key}` on appear is expected (catalog ≠ live store); see [USAGE.md](../docs/USAGE.md#catalog-vs-live-values).
 
 See [USAGE.md](../docs/USAGE.md) for plan-bar keys.
 

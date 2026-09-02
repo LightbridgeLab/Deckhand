@@ -33,6 +33,20 @@ modules = [
 
 Seed the Property Inspector dropdown from `config.example.toml` `[catalog.state_keys]`, or run `uv run deckhand catalog sync`.
 
+## Catalog vs live values
+
+The Property Inspector lists keys from `[catalog.state_keys]`. Listing a key there does **not** put it in the live store. A plugin publishes the value on the first successful poll (typically within the poll interval, ~60 seconds).
+
+Until then:
+
+- Data Widgets show `—`
+- `GET /state/{key}` returns **404** — expected, not a Core error
+- The button updates via `state.changed` once a value arrives
+
+Claude Code also writes placeholder keys (`available: false`) after the first *failed* poll so a 429 does not leave those keys missing. Optional `[paths] state_file` keeps last-known values across restarts and shrinks this window.
+
+Unknown keys that were never catalogued still 404. That is unchanged.
+
 ## Claude Code — `usage.claude_code.*`
 
 Polls Anthropic `GET /api/oauth/usage` with the Claude Code Keychain OAuth token (same source as `/usage` in the CLI). Requires `claude auth login` on this Mac.

@@ -126,7 +126,7 @@ Emit events with `build_event()` — never construct envelopes by hand.
 1. Validate payloads early; raise `ValueError` or `KeyError` as appropriate.
 2. Namespace actions, signals, and state keys.
 3. Document `payload_schema` for discovery (`GET /actions`, `GET /signals`).
-4. List new state keys under `[catalog.state_keys]` or run `deckhand catalog sync`.
+4. List new state keys under `[catalog.state_keys]` or run `deckhand catalog sync`. Catalog entries are bindable before the first `set_state`; `GET /state/{key}` returns 404 until you publish. That is expected — catalog membership is not a live store hit. Data Widgets already treat 404 as `—`.
 5. Register `on_shutdown` for any background task.
 6. Keep handlers async.
 

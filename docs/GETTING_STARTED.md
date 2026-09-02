@@ -63,7 +63,7 @@ api_key = "your-write-key"             # same as one of [auth].api_keys
 3. Set display format to `percentage` for usage bars.
 4. Stay signed in to the provider (e.g. `claude auth login` for Claude Code).
 
-Within ~60 seconds the button should show live plan usage. Press the button to briefly flash time-until-reset (`Xd Yh` or `Xh Ym`); duration is `[client].usage_reset_flash_seconds` (default 5).
+Until the first successful poll the button shows `—`, and Core access logs may include `GET /state/usage.… 404`. That is expected (catalog ≠ live store); see [USAGE.md](USAGE.md#catalog-vs-live-values). Within ~60 seconds the button should show live plan usage. Press the button to briefly flash time-until-reset (`Xd Yh` or `Xh Ym`); duration is `[client].usage_reset_flash_seconds` (default 5).
 
 If the dropdown is empty: copy `[catalog.state_keys]` from `config.example.toml`, or run `uv run deckhand catalog sync`, then click **Refresh**.
 
