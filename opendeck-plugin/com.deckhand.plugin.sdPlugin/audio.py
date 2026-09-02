@@ -1,4 +1,9 @@
-"""Cross-platform sound playback for the Deckhand OpenDeck plugin."""
+"""Host-side sound playback for the Deckhand OpenDeck plugin.
+
+Plays through the computer speakers (``afplay`` on macOS), not Stream Deck
+hardware. Default sounds are macOS system alerts under
+``/System/Library/Sounds``.
+"""
 
 from __future__ import annotations
 
@@ -10,24 +15,53 @@ from pathlib import Path
 
 logger = logging.getLogger("deckhand-audio")
 
-SOUNDS_DIR = Path(__file__).parent / "sounds"
+SYSTEM_SOUNDS_DIR = Path("/System/Library/Sounds")
+DEFAULT_SOUND = "Glass"
+
+# Names without extension; files are ``<name>.aiff`` on macOS.
+SYSTEM_SOUNDS: tuple[str, ...] = (
+    "Basso",
+    "Blow",
+    "Bottle",
+    "Frog",
+    "Funk",
+    "Glass",
+    "Hero",
+    "Morse",
+    "Ping",
+    "Pop",
+    "Purr",
+    "Sosumi",
+    "Submarine",
+    "Tink",
+)
 
 
-async def play_sound(filename: str) -> None:
-    """Play a sound file from the sounds/ directory.
+def resolve_sound_path(name: str) -> Path | None:
+    """Resolve a system-sound name to a local file, or None if unusable."""
+    if not name or name in (".", "..") or "/" in name or "\\" in name:
+        return None
+    path = SYSTEM_SOUNDS_DIR / f"{name}.aiff"
+    if path.is_file():
+        return path
+    return None
 
-    Uses platform-native commands so we don't block the event loop.
+
+async def play_sound(name: str) -> None:
+    """Play a macOS system sound by name (e.g. ``Glass``).
+
+    Uses platform-native commands so we don't block the event loop. No-op
+    when the file is missing (typical on Linux).
     """
-    path = SOUNDS_DIR / filename
-    if not path.exists():
-        logger.warning("Sound file not found: %s", path)
+    path = resolve_sound_path(name)
+    if path is None:
+        logger.warning("Sound not found: %s", name)
         return
 
     system = platform.system()
     if system == "Darwin":
         cmd = ["afplay", str(path)]
     elif system == "Linux":
-        # Prefer paplay (PulseAudio), fall back to aplay (ALSA)
         if shutil.which("paplay"):
             cmd = ["paplay", str(path)]
         elif shutil.which("aplay"):
@@ -47,4 +81,4 @@ async def play_sound(filename: str) -> None:
         )
         await proc.wait()
     except OSError:
-        logger.exception("Failed to play sound: %s", filename)
+        logger.exception("Failed to play sound: %s", name)

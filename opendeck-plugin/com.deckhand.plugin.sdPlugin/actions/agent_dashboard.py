@@ -14,9 +14,11 @@ import websockets.asyncio.client
 from bridge import DeckhandBridge
 
 from actions.agent_ranking import (
+    matches_agent_filter,
     needs_attention,
     top_attention_agent,
 )
+from actions.agent_status import handle_awaiting_input_press
 
 logger = logging.getLogger("deckhand-action-dashboard")
 
@@ -29,9 +31,7 @@ _STATUS_EMOJI = {
 
 
 def _dashboard_title(agents: list[dict[str, Any]], agent_filter: str) -> str:
-    filtered = [
-        a for a in agents if agent_filter in ("", "*") or a.get("type") == agent_filter
-    ]
+    filtered = [a for a in agents if matches_agent_filter(a, agent_filter)]
     if not filtered:
         return "No Agents"
 
@@ -65,6 +65,17 @@ class AgentDashboardHandler:
         self._contexts[context] = {"settings": dict(settings)}
         await self._refresh(ws, context, settings)
 
+    async def on_deckhand_connected(
+        self, ws: websockets.asyncio.client.ClientConnection
+    ) -> None:
+        """Re-sync all active dashboard instances when Deckhand Core connects."""
+        for context, info in list(self._contexts.items()):
+            settings = info.get("settings", {})
+            try:
+                await self._refresh(ws, context, settings)
+            except Exception:
+                logger.exception("Failed to refresh dashboard %s on connect", context)
+
     async def on_will_disappear(self, context: str) -> None:
         self._contexts.pop(context, None)
 
@@ -96,7 +107,7 @@ class AgentDashboardHandler:
                     )
                 elif top.get("status") == "awaiting_input":
                     default_input = settings.get("default_input", "")
-                    await self.bridge.provide_input(agent_id, default_input)
+                    await handle_awaiting_input_press(self.bridge, top, default_input)
                 elif top.get("status") == "error":
                     await self.bridge.start_agent(agent_id)
                 else:

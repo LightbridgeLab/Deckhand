@@ -48,10 +48,46 @@ async def test_hook_auto_registers_agent(client: AsyncClient) -> None:
     assert body["agent"]["type"] == "cursor"
     assert body["agent"]["project_root"] == "/tmp/my-project"
     assert body["agent"]["status"] == "idle"
+    assert body["agent"]["display_label"] == "Cursor: my-project"
 
     summary = await client.get("/state/cursor.summary")
     assert summary.status_code == 200
     assert summary.json()["value"]["total"] == 1
+
+
+async def test_hook_title_update_emits_context_changed(client: AsyncClient) -> None:
+    import deckhand.main as main_mod
+
+    captured: list[str] = []
+    assert main_mod.orchestrator is not None
+    bus = main_mod.orchestrator.event_bus
+    original = bus.emit
+
+    async def capture(event: dict) -> None:
+        captured.append(event["type"])
+        await original(event)
+
+    bus.emit = capture  # type: ignore[method-assign]
+    session = {
+        "session_id": "feedfeed00000000",
+        "cwd": "/tmp/Deckhand",
+        "hook_event_name": "sessionStart",
+    }
+    await client.post("/agents/cursor/hook", json=session)
+    await client.post(
+        "/agents/cursor/hook",
+        json={
+            **session,
+            "hook_event_name": "beforeSubmitPrompt",
+            "title": "Please review @CONFIG",
+        },
+    )
+    assert "agent.context_changed" in captured
+    row = next(
+        a for a in (await client.get("/agents")).json() if a["id"] == "cursor-feedfeed"
+    )
+    assert row["title"] == "Please review @CONFIG"
+    assert row["display_label"] == "Cursor: Deckhand"
 
 
 async def test_hook_status_transitions(client: AsyncClient) -> None:

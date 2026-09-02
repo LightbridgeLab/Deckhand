@@ -12,7 +12,7 @@ import logging
 from typing import Any
 
 import websockets.asyncio.client
-from audio import play_sound
+from audio import DEFAULT_SOUND, play_sound
 from bridge import DeckhandBridge
 
 logger = logging.getLogger("deckhand-action-agent")
@@ -30,10 +30,6 @@ STATUS_TITLES = {
     "running": "Running",
     "awaiting_input": "Input!",
     "error": "Error",
-}
-
-STATUS_SOUNDS = {
-    "awaiting_input": "need-input.wav",
 }
 
 # Auto-retry defaults
@@ -59,14 +55,17 @@ class AgentStatusHandler:
     ) -> None:
         agent_id = settings.get("agent_id", "")
         sounds_enabled = settings.get("sounds_enabled", True)
+        sound_name = settings.get("sound_name") or DEFAULT_SOUND
         auto_retry = settings.get("auto_retry", False)
         retry_max = settings.get("retry_max", _RETRY_MAX_ATTEMPTS)
         self._watched[context] = {
             "agent_id": agent_id,
             "sounds_enabled": sounds_enabled,
+            "sound_name": sound_name,
             "auto_retry": auto_retry,
             "retry_max": retry_max,
             "retry_count": 0,
+            "last_status": None,
         }
 
         if not agent_id:
@@ -79,6 +78,7 @@ class AgentStatusHandler:
             agent = next((a for a in agents if a.get("id") == agent_id), None)
             if agent:
                 status = agent.get("status", "idle")
+                self._watched[context]["last_status"] = status
                 label = agent.get("display_label", agent.get("id", agent_id))
                 title = STATUS_TITLES.get(status, "") or label
                 await _set_state(ws, context, STATUS_INDEX.get(status, 0))
@@ -88,6 +88,33 @@ class AgentStatusHandler:
         except Exception:
             logger.exception("Failed to fetch agent %s", agent_id)
             await _set_title(ws, context, "Offline")
+
+    async def on_deckhand_connected(
+        self, ws: websockets.asyncio.client.ClientConnection
+    ) -> None:
+        """Re-sync all active agent status instances when Deckhand Core connects."""
+        if not self._watched:
+            return
+        try:
+            agents = await self.bridge.list_agents()
+        except Exception:
+            logger.exception("Failed to fetch agents on connect")
+            return
+
+        for context, watched in list(self._watched.items()):
+            agent_id = watched.get("agent_id", "")
+            if not agent_id:
+                continue
+            agent = next((a for a in agents if a.get("id") == agent_id), None)
+            if agent:
+                status = agent.get("status", "idle")
+                watched["last_status"] = status
+                label = agent.get("display_label", agent.get("id", agent_id))
+                title = STATUS_TITLES.get(status, "") or label
+                await _set_state(ws, context, STATUS_INDEX.get(status, 0))
+                await _set_title(ws, context, title)
+            else:
+                await _set_title(ws, context, "Not Found")
 
     async def on_will_disappear(self, context: str) -> None:
         self._watched.pop(context, None)
@@ -117,7 +144,7 @@ class AgentStatusHandler:
                 await self.bridge.cancel_agent(agent_id)
             elif status == "awaiting_input":
                 default_input = settings.get("default_input", "")
-                await self.bridge.provide_input(agent_id, default_input)
+                await handle_awaiting_input_press(self.bridge, agent, default_input)
             elif status == "error":
                 # Manual press on error state resets retry count and starts agent
                 if context in self._watched:
@@ -145,6 +172,10 @@ class AgentStatusHandler:
     ) -> None:
         """Handle Property Inspector requests (e.g., fetch agent list)."""
         request_type = payload.get("type", "")
+        if request_type == "previewSound":
+            name = str(payload.get("sound_name") or DEFAULT_SOUND)
+            await play_sound(name)
+            return
         if request_type == "getAgents":
             try:
                 agents = await self.bridge.list_agents()
@@ -198,11 +229,17 @@ class AgentStatusHandler:
                 await _set_state(ws, context, state_idx)
                 await _set_title(ws, context, title)
 
-                # Play sound if enabled
-                if info.get("sounds_enabled", True):
-                    sound = STATUS_SOUNDS.get(new_status)
+                previous = info.get("last_status")
+                if (
+                    new_status == "awaiting_input"
+                    and previous != "awaiting_input"
+                    and info.get("sounds_enabled", True)
+                ):
+                    sound = info.get("sound_name") or DEFAULT_SOUND
                     if sound:
                         await play_sound(sound)
+                if new_status:
+                    info["last_status"] = new_status
 
                 # Auto-retry on error
                 if new_status == "error" and info.get("auto_retry", False):
@@ -257,6 +294,27 @@ class AgentStatusHandler:
         task = self._retry_tasks.pop(context, None)
         if task and not task.done():
             task.cancel()
+
+
+def accepts_text(agent: dict[str, Any]) -> bool:
+    """True when Core can inject Default Input into this agent (demo/mock)."""
+    caps = agent.get("capabilities") or []
+    return "accepts_text" in caps
+
+
+async def handle_awaiting_input_press(
+    bridge: DeckhandBridge,
+    agent: dict[str, Any],
+    default_input: str,
+) -> None:
+    """Send text to agents that accept it; otherwise focus the session."""
+    agent_id = str(agent.get("id") or "")
+    if not agent_id:
+        return
+    if accepts_text(agent):
+        await bridge.provide_input(agent_id, default_input)
+        return
+    await bridge.execute_action("ui.focus_agent", {"agent_id": agent_id})
 
 
 # ---------------------------------------------------------------------------

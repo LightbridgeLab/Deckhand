@@ -15,9 +15,14 @@
     </div>
 
     <div class="sdpi-item">
-      <div class="sdpi-item-label">Agent filter</div>
+      <div class="sdpi-item-label">Show</div>
       <div class="sdpi-item-value">
-        <input type="text" id="agent_filter" value="*" placeholder="cursor or *" />
+        <select id="agent_filter">
+          <option value="*" selected>All sessions</option>
+          <option value="claude_code">Claude</option>
+          <option value="cursor">Cursor</option>
+          <option value="mock">Demo</option>
+        </select>
       </div>
     </div>
 
@@ -43,7 +48,10 @@
       pluginUUID = uuid;
       actionInfo = JSON.parse(actionInfoStr);
       settings = actionInfo.payload.settings || {};
-      document.getElementById("agent_filter").value = settings.agent_filter || "*";
+      document.getElementById("agent_filter").value = canonicalFilter(
+        settings.agent_filter,
+        "*"
+      );
       document.getElementById("default_input").value = settings.default_input || "";
 
       websocket = new WebSocket("ws://127.0.0.1:" + port);
@@ -55,9 +63,25 @@
       };
     }
 
+    function canonicalFilter(value, fallback) {
+      var raw = (value || fallback || "*").trim().toLowerCase();
+      var aliases = {
+        claude: "claude_code",
+        "claude-code": "claude_code",
+        demo: "mock",
+      };
+      if (aliases[raw]) {
+        return aliases[raw];
+      }
+      return raw;
+    }
+
     function saveSettings() {
       settings = {
-        agent_filter: document.getElementById("agent_filter").value || "*",
+        agent_filter: canonicalFilter(
+          document.getElementById("agent_filter").value,
+          "*"
+        ),
         default_input: document.getElementById("default_input").value || "",
       };
       if (websocket && websocket.readyState === WebSocket.OPEN) {
@@ -69,7 +93,7 @@
       }
     }
 
-    document.getElementById("agent_filter").addEventListener("input", saveSettings);
+    document.getElementById("agent_filter").addEventListener("change", saveSettings);
     document.getElementById("default_input").addEventListener("input", saveSettings);
   </script>
 </body>

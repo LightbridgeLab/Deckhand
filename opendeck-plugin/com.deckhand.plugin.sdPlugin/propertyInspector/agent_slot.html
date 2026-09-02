@@ -10,28 +10,42 @@
     <div class="sdpi-heading">Dynamic Agent Slot</div>
 
     <div class="sdpi-info">
-      Binds this button to a priority-ranked agent at runtime. Empty slots show &mdash;.
+      This key is a placeholder. Live sessions of the chosen type fill it at
+      runtime; empty slots show &mdash;. Slot index is the Nth session of
+      <em>this filter</em>, not the button&rsquo;s position on the deck.
     </div>
 
     <div class="sdpi-item">
-      <div class="sdpi-item-label">Slot index</div>
+      <div class="sdpi-item-label">Show</div>
+      <div class="sdpi-item-value">
+        <select id="agent_filter">
+          <option value="*">All sessions</option>
+          <option value="claude_code">Claude</option>
+          <option value="cursor" selected>Cursor</option>
+          <option value="mock">Demo</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="sdpi-item">
+      <div class="sdpi-item-label">Slot</div>
       <div class="sdpi-item-value">
         <select id="slot_index">
-          <option value="1" selected>1</option>
-          <option value="2">2</option>
-          <option value="3">3</option>
-          <option value="4">4</option>
-          <option value="5">5</option>
-          <option value="6">6</option>
-          <option value="7">7</option>
-          <option value="8">8</option>
-          <option value="9">9</option>
-          <option value="10">10</option>
-          <option value="11">11</option>
-          <option value="12">12</option>
-          <option value="13">13</option>
-          <option value="14">14</option>
-          <option value="15">15</option>
+          <option value="1" selected>1st session</option>
+          <option value="2">2nd session</option>
+          <option value="3">3rd session</option>
+          <option value="4">4th session</option>
+          <option value="5">5th session</option>
+          <option value="6">6th session</option>
+          <option value="7">7th session</option>
+          <option value="8">8th session</option>
+          <option value="9">9th session</option>
+          <option value="10">10th session</option>
+          <option value="11">11th session</option>
+          <option value="12">12th session</option>
+          <option value="13">13th session</option>
+          <option value="14">14th session</option>
+          <option value="15">15th session</option>
         </select>
       </div>
     </div>
@@ -46,11 +60,11 @@
       </div>
     </div>
 
-    <div class="sdpi-item">
-      <div class="sdpi-item-label">Agent filter</div>
-      <div class="sdpi-item-value">
-        <input type="text" id="agent_filter" value="cursor" placeholder="cursor or *" />
-      </div>
+    <div class="sdpi-info">
+      Example: three Claude keys + two Cursor keys &rarr; Show Claude / Slot 1–3
+      and Show Cursor / Slot 1–2. Leave Page at 1. Page 2 is only if this key
+      sits on a second OpenDeck profile that should show the next seven sessions
+      of the same filter (then Slot starts at 1 again).
     </div>
 
     <div class="sdpi-item">
@@ -58,20 +72,48 @@
       <div class="sdpi-item-value">
         <label>
           <input type="checkbox" id="sounds_enabled" checked />
-          Play audio on awaiting input
+          Play audio when the bound session needs input
         </label>
       </div>
     </div>
 
     <div class="sdpi-item">
-      <div class="sdpi-item-label">Default Input</div>
-      <div class="sdpi-item-value">
-        <input type="text" id="default_input" placeholder="For non-cursor agents" />
+      <div class="sdpi-item-label">Sound</div>
+      <div class="sdpi-item-value select-with-action">
+        <select id="sound_name">
+          <option value="Glass" selected>Glass</option>
+          <option value="Ping">Ping</option>
+          <option value="Pop">Pop</option>
+          <option value="Tink">Tink</option>
+          <option value="Submarine">Submarine</option>
+          <option value="Sosumi">Sosumi</option>
+          <option value="Purr">Purr</option>
+          <option value="Funk">Funk</option>
+          <option value="Hero">Hero</option>
+          <option value="Bottle">Bottle</option>
+          <option value="Blow">Blow</option>
+          <option value="Basso">Basso</option>
+          <option value="Frog">Frog</option>
+          <option value="Morse">Morse</option>
+        </select>
+        <button type="button" id="preview_sound" title="Play a sample on this computer">Preview</button>
       </div>
     </div>
 
     <div class="sdpi-info">
-      Press: Cursor agents &rarr; focus in Cursor. Other agents &rarr; start / cancel / input.
+      Sounds play through this Mac&rsquo;s speakers, not the Stream Deck.
+    </div>
+
+    <div class="sdpi-item">
+      <div class="sdpi-item-label">Default Input</div>
+      <div class="sdpi-item-value">
+        <input type="text" id="default_input" placeholder="Demo agents only" />
+      </div>
+    </div>
+
+    <div class="sdpi-info">
+      Press: Cursor agents &rarr; focus in Cursor. Other agents needing input
+      &rarr; jump to that session (Default Input is only sent to demo agents that accept text).
     </div>
   </div>
 
@@ -88,8 +130,14 @@
 
       document.getElementById("slot_index").value = settings.slot_index || 1;
       document.getElementById("page").value = settings.page || 1;
-      document.getElementById("agent_filter").value = settings.agent_filter || "cursor";
+      document.getElementById("agent_filter").value = canonicalFilter(
+        settings.agent_filter,
+        "cursor"
+      );
       document.getElementById("sounds_enabled").checked = settings.sounds_enabled !== false;
+      if (settings.sound_name) {
+        document.getElementById("sound_name").value = settings.sound_name;
+      }
       document.getElementById("default_input").value = settings.default_input || "";
 
       websocket = new WebSocket("ws://127.0.0.1:" + port);
@@ -101,12 +149,29 @@
       };
     }
 
+    function canonicalFilter(value, fallback) {
+      var raw = (value || fallback || "*").trim().toLowerCase();
+      var aliases = {
+        claude: "claude_code",
+        "claude-code": "claude_code",
+        demo: "mock",
+      };
+      if (aliases[raw]) {
+        return aliases[raw];
+      }
+      return raw;
+    }
+
     function saveSettings() {
       settings = {
         slot_index: parseInt(document.getElementById("slot_index").value, 10) || 1,
         page: parseInt(document.getElementById("page").value, 10) || 1,
-        agent_filter: document.getElementById("agent_filter").value || "cursor",
+        agent_filter: canonicalFilter(
+          document.getElementById("agent_filter").value,
+          "cursor"
+        ),
         sounds_enabled: document.getElementById("sounds_enabled").checked,
+        sound_name: document.getElementById("sound_name").value || "Glass",
         default_input: document.getElementById("default_input").value || "",
       };
       if (websocket && websocket.readyState === WebSocket.OPEN) {
@@ -120,9 +185,24 @@
 
     document.getElementById("slot_index").addEventListener("change", saveSettings);
     document.getElementById("page").addEventListener("change", saveSettings);
-    document.getElementById("agent_filter").addEventListener("input", saveSettings);
+    document.getElementById("agent_filter").addEventListener("change", saveSettings);
     document.getElementById("sounds_enabled").addEventListener("change", saveSettings);
+    document.getElementById("sound_name").addEventListener("change", saveSettings);
     document.getElementById("default_input").addEventListener("input", saveSettings);
+    document.getElementById("preview_sound").addEventListener("click", function () {
+      if (!websocket || websocket.readyState !== WebSocket.OPEN || !actionInfo) {
+        return;
+      }
+      websocket.send(JSON.stringify({
+        event: "sendToPlugin",
+        action: actionInfo.action,
+        context: pluginUUID,
+        payload: {
+          type: "previewSound",
+          sound_name: document.getElementById("sound_name").value,
+        },
+      }));
+    });
   </script>
 </body>
 </html>

@@ -151,6 +151,21 @@ async def handle_deckhand_event(
             logger.exception("Error forwarding Deckhand event %s", event_type)
 
 
+async def handle_deckhand_connected(
+    ws: websockets.asyncio.client.ClientConnection,
+) -> None:
+    """Notify all action handlers to re-sync their state when Core connects."""
+    diag.deckhand_connected = True
+    logger.info("Deckhand Core connected — re-syncing active button handlers")
+    for name, handler in ACTION_HANDLERS.items():
+        if hasattr(handler, "on_deckhand_connected"):
+            try:
+                await handler.on_deckhand_connected(ws)
+            except Exception as exc:
+                diag.record_error(str(exc))
+                logger.exception("Error syncing handler %s on connect", name)
+
+
 async def deckhand_listener(
     ws: websockets.asyncio.client.ClientConnection, bridge: DeckhandBridge
 ) -> None:
@@ -163,9 +178,14 @@ async def deckhand_listener(
         diag.deckhand_connected = True
         await handle_deckhand_event(ws, event)
 
+    async def on_connect() -> None:
+        await handle_deckhand_connected(ws)
+
     plugin_dir = Path(__file__).parent
     await bridge.subscribe_events(
-        on_event, refresh=lambda: resolve_connection(plugin_dir)
+        on_event,
+        refresh=lambda: resolve_connection(plugin_dir),
+        on_connect=on_connect,
     )
 
 

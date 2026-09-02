@@ -65,7 +65,7 @@ async def test_list_agents(client: AsyncClient) -> None:
     assert "project_root" in mock1
     assert "display_label" in mock1
     assert mock1["project_root"] == "/home/dev/project-alpha"
-    assert mock1["display_label"] == "mock: project-alpha"
+    assert mock1["display_label"] == "Demo: project-alpha"
 
 
 async def test_start_agent(client: AsyncClient) -> None:
@@ -189,7 +189,7 @@ async def test_register_agent(client: AsyncClient) -> None:
     assert data["type"] == "claude-code"
     assert data["project_root"] == "/home/dev/my-project"
     assert data["active_file"] == "/home/dev/my-project/src/main.py"
-    assert data["display_label"] == "claude-code: my-project"
+    assert data["display_label"] == "Claude: my-project"
 
     # Agent should now be listable
     resp2 = await client.get("/agents")
@@ -211,7 +211,7 @@ async def test_register_mock_agent(client: AsyncClient) -> None:
     data = resp.json()
     assert data["id"] == "demo-1"
     assert data["type"] == "mock"
-    assert data["display_label"] == "mock: deckhand-demo"
+    assert data["display_label"] == "Demo: deckhand-demo"
 
     start = await client.post("/agents/demo-1/start")
     assert start.status_code == 200
@@ -251,7 +251,7 @@ async def test_update_agent_context(client: AsyncClient) -> None:
     data = resp.json()
     assert data["project_root"] == "/tmp/new-project"
     assert data["active_file"] == "/tmp/new-project/README.md"
-    assert data["display_label"] == "mock: new-project"
+    assert data["display_label"] == "Demo: new-project"
 
 
 async def test_update_agent_context_not_found(client: AsyncClient) -> None:
@@ -279,6 +279,18 @@ async def test_health_endpoint(client: AsyncClient) -> None:
     assert data["plugins"]["actions"] > 0
     assert "entry_count" in data["state_store"]
     assert data["state_store"]["writable"] is True
+
+
+async def test_root_endpoint(client: AsyncClient) -> None:
+    """GET / returns human-friendly HTML dashboard (unauthenticated)."""
+    transport = ASGITransport(app=client._transport.app)
+    async with AsyncClient(transport=transport, base_url="http://test") as no_auth:
+        resp = await no_auth.get("/")
+    assert resp.status_code == 200
+    assert "text/html" in resp.headers["content-type"]
+    assert "Deckhand Core" in resp.text
+    assert "Running" in resp.text
+    assert "/docs" in resp.text
 
 
 async def test_metrics_endpoint(client: AsyncClient) -> None:
@@ -314,7 +326,7 @@ async def test_metrics_endpoint(client: AsyncClient) -> None:
 
 
 async def test_agent_without_context_uses_id_as_label(client: AsyncClient) -> None:
-    """An agent with no project_root falls back to its ID for display_label."""
+    """An agent with no project_root uses a friendly type plus short id."""
     resp = await client.post(
         "/agents/register",
         json={"agent_id": "bare-agent"},
@@ -322,4 +334,4 @@ async def test_agent_without_context_uses_id_as_label(client: AsyncClient) -> No
     assert resp.status_code == 200
     data = resp.json()
     assert data["project_root"] is None
-    assert data["display_label"] == "bare-agent"
+    assert data["display_label"] == "External · bare-agent"

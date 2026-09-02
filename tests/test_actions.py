@@ -57,6 +57,7 @@ async def test_default_actions(action_registry: ActionRegistry) -> None:
     assert "agent.start" in action_names
     assert "agent.cancel" in action_names
     assert "agent.input" in action_names
+    assert "ui.focus_agent" in action_names
 
 
 async def test_agent_start(action_registry: ActionRegistry) -> None:

@@ -19,8 +19,9 @@ from fastapi import (
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import JSONResponse
+from starlette.responses import HTMLResponse, JSONResponse
 
+from deckhand.agents.base import AgentBase
 from deckhand.agents.claude_code import ClaudeCodeAgent
 from deckhand.agents.cursor import CursorAgent
 from deckhand.agents.pending_input import PendingInputTracker
@@ -313,8 +314,234 @@ class SignalPayload(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Health check (unauthenticated)
+# Root dashboard & Health check (unauthenticated)
 # ---------------------------------------------------------------------------
+
+
+@app.get("/", response_class=HTMLResponse)
+async def root() -> HTMLResponse:
+    """Dashboard homepage for browser visitors."""
+    if orchestrator is None or settings is None or _service_start_time is None:
+        return HTMLResponse(
+            "<!DOCTYPE html><html><body><h1>Deckhand initializing...</h1></body></html>",
+            status_code=503,
+        )
+
+    uptime_sec = int(time.time() - _service_start_time)
+    hours, remainder = divmod(uptime_sec, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    uptime_str = (
+        f"{hours}h {minutes}m {seconds}s"
+        if hours
+        else (f"{minutes}m {seconds}s" if minutes else f"{seconds}s")
+    )
+
+    agents = orchestrator.list_agents()
+    plugin_count = len(settings.plugin_modules)
+    action_count = len(action_registry.list_actions()) if action_registry else 0
+    ws_clients = orchestrator.event_bus.client_count
+
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Deckhand Core</title>
+  <style>
+    :root {{
+      --bg: #0d1117;
+      --card-bg: #161b22;
+      --border: #30363d;
+      --text: #c9d1d9;
+      --text-heading: #f0f6fc;
+      --accent: #58a6ff;
+      --green: #3fb950;
+      --green-bg: rgba(63, 185, 80, 0.15);
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    }}
+    @media (prefers-color-scheme: light) {{
+      :root {{
+        --bg: #f6f8fa;
+        --card-bg: #ffffff;
+        --border: #d0d7de;
+        --text: #24292f;
+        --text-heading: #1f2328;
+        --accent: #0969da;
+        --green: #1a7f37;
+        --green-bg: rgba(26, 127, 55, 0.15);
+      }}
+    }}
+    body {{
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+      padding: 40px 20px;
+      display: flex;
+      justify-content: center;
+    }}
+    .container {{
+      max-width: 680px;
+      width: 100%;
+    }}
+    .header {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+    }}
+    .title-group {{
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }}
+    .icon {{
+      font-size: 32px;
+    }}
+    h1 {{
+      margin: 0;
+      font-size: 24px;
+      color: var(--text-heading);
+    }}
+    .status-badge {{
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--green-bg);
+      color: var(--green);
+      font-size: 13px;
+      font-weight: 600;
+      padding: 4px 12px;
+      border-radius: 20px;
+      border: 1px solid var(--green);
+    }}
+    .status-dot {{
+      width: 8px;
+      height: 8px;
+      background: var(--green);
+      border-radius: 50%;
+    }}
+    .card {{
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 16px;
+    }}
+    .card h2 {{
+      margin-top: 0;
+      margin-bottom: 16px;
+      font-size: 16px;
+      color: var(--text-heading);
+    }}
+    .grid {{
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      gap: 16px;
+    }}
+    .metric-label {{
+      font-size: 12px;
+      color: var(--text);
+      opacity: 0.8;
+      margin-bottom: 4px;
+    }}
+    .metric-value {{
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text-heading);
+    }}
+    ul.links {{
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }}
+    ul.links li a {{
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 500;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }}
+    ul.links li a:hover {{
+      text-decoration: underline;
+    }}
+    .footer {{
+      margin-top: 24px;
+      text-align: center;
+      font-size: 12px;
+      color: var(--text);
+      opacity: 0.7;
+    }}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="title-group">
+        <span class="icon">⚓️</span>
+        <div>
+          <h1>Deckhand Core</h1>
+          <div style="font-size: 12px; opacity: 0.8;">Local Stream Deck & OpenDeck Control</div>
+        </div>
+      </div>
+      <div class="status-badge">
+        <span class="status-dot"></span>
+        Running
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Service Stats</h2>
+      <div class="grid">
+        <div>
+          <div class="metric-label">Version</div>
+          <div class="metric-value">v{SERVICE_VERSION}</div>
+        </div>
+        <div>
+          <div class="metric-label">Uptime</div>
+          <div class="metric-value">{uptime_str}</div>
+        </div>
+        <div>
+          <div class="metric-label">Clients</div>
+          <div class="metric-value">{ws_clients} connected</div>
+        </div>
+        <div>
+          <div class="metric-label">Agents</div>
+          <div class="metric-value">{len(agents)} active</div>
+        </div>
+        <div>
+          <div class="metric-label">Plugins</div>
+          <div class="metric-value">{plugin_count} loaded</div>
+        </div>
+        <div>
+          <div class="metric-label">Actions</div>
+          <div class="metric-value">{action_count} registered</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>API & Diagnostics</h2>
+      <ul class="links">
+        <li><a href="https://github.com/LightbridgeLab/Deckhand" target="_blank">🌐 <strong>Project Documentation & GitHub</strong></a> — Setup guides, Stream Deck profiles, and reference</li>
+        <li><a href="/docs" target="_blank">📖 <strong>Interactive API Docs (Swagger UI)</strong></a> — Browse and test endpoints</li>
+        <li><a href="/redoc" target="_blank">📄 <strong>API Documentation (ReDoc)</strong></a> — Clean API reference</li>
+        <li><a href="/health" target="_blank">🩺 <strong>Health Endpoint (JSON)</strong></a> — Machine-readable status</li>
+        <li><a href="/metrics" target="_blank">📊 <strong>Metrics Endpoint</strong></a> — Prometheus formatted metrics</li>
+      </ul>
+    </div>
+
+    <div class="footer">
+      Deckhand service is listening locally on 127.0.0.1:{settings.port}
+    </div>
+  </div>
+</body>
+</html>"""
+    return HTMLResponse(content=html)
 
 
 @app.get("/health")
@@ -472,8 +699,6 @@ async def register_agent(payload: AgentRegisterPayload) -> dict[str, object]:
     if orchestrator.get_agent(payload.agent_id) is not None:
         raise HTTPException(status_code=409, detail="agent already registered")
 
-    from deckhand.agents.base import AgentBase
-
     if payload.agent_type == "mock":
         from deckhand.agents.mock import MockAgent
 
@@ -536,6 +761,20 @@ async def unregister_agent(agent_id: str) -> dict[str, object]:
     return {"status": "unregistered", "agent_id": agent_id}
 
 
+async def _emit_agent_context_changed(agent: AgentBase) -> None:
+    """Push an updated ``display_label`` / project to WebSocket clients."""
+    if orchestrator is None:
+        return
+    orchestrator.refresh_label_disambiguators()
+    await orchestrator.event_bus.emit(
+        build_event(
+            "agent.context_changed",
+            {"kind": "agent", "id": agent.id},
+            {"agent": agent.as_dict()},
+        )
+    )
+
+
 def _claude_code_agent_id(session_id: str) -> str:
     """Derive a stable agent id from a Claude Code session id."""
     short = session_id[:8] if len(session_id) >= 8 else session_id
@@ -588,8 +827,10 @@ async def claude_code_hook(payload: ClaudeCodeHookPayload) -> dict[str, object]:
         )
     else:
         agent = existing  # type: ignore[assignment]
+        context_changed = False
         if payload.cwd and agent.project_root != payload.cwd:
             agent.project_root = payload.cwd
+            context_changed = True
         # Always (re)bind the focuser when iterm_session_id is present, so
         # late-arriving hook upgrades AND changes to the iTerm session id
         # (e.g. the user detached and reattached a session to a new tab)
@@ -598,6 +839,8 @@ async def claude_code_hook(payload: ClaudeCodeHookPayload) -> dict[str, object]:
             orchestrator.register_focuser(
                 agent_id, make_iterm_focuser(payload.iterm_session_id)
             )
+        if context_changed:
+            await _emit_agent_context_changed(agent)
 
     if not isinstance(agent, ClaudeCodeAgent):
         raise HTTPException(
@@ -656,6 +899,7 @@ async def cursor_hook(payload: CursorHookPayload) -> dict[str, object]:
         )
     else:
         agent = existing  # type: ignore[assignment]
+        context_changed = False
         if payload.cwd and agent.project_root != payload.cwd:
             agent.project_root = payload.cwd
             # Rebind the focuser so a workspace switch mid-session takes
@@ -663,8 +907,12 @@ async def cursor_hook(payload: CursorHookPayload) -> dict[str, object]:
             # microsecond-cheap; mirrors the late-binding pattern in the
             # Claude Code hook handler above.
             orchestrator.register_focuser(agent_id, make_cursor_focuser(payload.cwd))
+            context_changed = True
         if payload.title and getattr(agent, "title", None) != payload.title:
             agent.title = payload.title  # type: ignore[attr-defined]
+            context_changed = True
+        if context_changed:
+            await _emit_agent_context_changed(agent)
 
     if not isinstance(agent, CursorAgent):
         raise HTTPException(
@@ -697,13 +945,7 @@ async def update_agent_context(
     if payload.active_file is not None:
         agent.active_file = payload.active_file
 
-    await orchestrator.event_bus.emit(
-        build_event(
-            "agent.context_changed",
-            {"kind": "agent", "id": agent_id},
-            {"agent": agent.as_dict()},
-        )
-    )
+    await _emit_agent_context_changed(agent)
     return agent.as_dict()
 
 

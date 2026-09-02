@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from deckhand.agents.ranking import (
     agent_for_slot,
+    matches_agent_filter,
     needs_attention,
     rank_agents,
     top_attention_agent,
@@ -19,6 +20,35 @@ def _agent(
         "status": status,
         "updated_at": updated_at,
     }
+
+
+def test_claude_filter_alias_matches_claude_code() -> None:
+    agent = _agent("c1", "running", 1, agent_type="claude_code")
+    assert matches_agent_filter(agent, "claude")
+    assert matches_agent_filter(agent, "claude_code")
+    assert matches_agent_filter(agent, "Claude")
+    assert not matches_agent_filter(agent, "cursor")
+
+
+def test_cursor_filter_includes_cursor_cloud() -> None:
+    cloud = _agent("cc", "running", 1, agent_type="cursor_cloud")
+    assert matches_agent_filter(cloud, "cursor")
+    assert matches_agent_filter(cloud, "*")
+
+
+def test_mixed_board_slot_index_is_per_filter() -> None:
+    agents = [
+        _agent("claude-1", "running", 3, "claude_code"),
+        _agent("claude-2", "idle", 2, "claude_code"),
+        _agent("cursor-1", "running", 1, "cursor"),
+    ]
+    first_claude = agent_for_slot(agents, 1, agent_filter="claude")
+    second_claude = agent_for_slot(agents, 2, agent_filter="claude")
+    first_cursor = agent_for_slot(agents, 1, agent_filter="cursor")
+    assert first_claude is not None and first_claude["id"] == "claude-1"
+    assert second_claude is not None and second_claude["id"] == "claude-2"
+    assert first_cursor is not None and first_cursor["id"] == "cursor-1"
+    assert agent_for_slot(agents, 4, agent_filter="cursor") is None
 
 
 def test_rank_agents_priority_order() -> None:

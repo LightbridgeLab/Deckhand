@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections import defaultdict
 from collections.abc import Iterable
 
 from deckhand.agents.base import AgentBase
@@ -36,6 +37,7 @@ class Orchestrator:
     def register_agent(self, agent: AgentBase) -> None:
         agent.on_event = self.event_bus.emit
         self.agents[agent.id] = agent
+        self.refresh_label_disambiguators()
 
     def unregister_agent(self, agent_id: str) -> AgentBase | None:
         agent = self.agents.pop(agent_id, None)
@@ -44,7 +46,28 @@ class Orchestrator:
         # Focusers are tied to a specific live agent registration; drop on
         # unregister so a re-registered session must re-supply its focuser.
         self.focusers.unregister(agent_id)
+        self.refresh_label_disambiguators()
         return agent
+
+    def refresh_label_disambiguators(self) -> None:
+        """Suffix colliding same-type, same-project labels.
+
+        Two Claude sessions in ``backend`` become ``Claude: backend · 9e77b92a``
+        vs ``Claude: backend · 22d38fc1``. Agents without a project already
+        include a short id in the base label, so they are left alone.
+        """
+        groups: dict[tuple[str, str], list[AgentBase]] = defaultdict(list)
+        for agent in self.agents.values():
+            if not agent.project_root:
+                agent.label_disambiguator = None
+                continue
+            groups[(agent.type, agent.project_root)].append(agent)
+        for group in groups.values():
+            collide = len(group) > 1
+            for agent in group:
+                agent.label_disambiguator = (
+                    agent.make_disambiguator() if collide else None
+                )
 
     def register_focuser(self, agent_id: str, focuser: Focuser) -> None:
         self.focusers.register(agent_id, focuser)
@@ -72,6 +95,30 @@ class Orchestrator:
         if agent is None:
             raise KeyError(agent_id)
         await agent.provide_input(text)
+
+    async def focus_agent(self, agent_id: str) -> None:
+        """Bring a specific agent's window/tab to the front.
+
+        No-op (logged) when the agent has no registered focuser — Claude
+        outside iTerm, for example. Missing agent raises ``KeyError``.
+        """
+        agent = self.get_agent(agent_id)
+        if agent is None:
+            raise KeyError(agent_id)
+        focuser = self.focusers.get(agent_id)
+        if focuser is None:
+            logger.info("agent %s has no focuser; focus is a no-op", agent_id)
+            return
+        try:
+            await asyncio.wait_for(focuser(), timeout=_FOCUSER_TIMEOUT_SEC)
+        except TimeoutError:
+            logger.warning(
+                "focuser for %s timed out after %.1fs",
+                agent_id,
+                _FOCUSER_TIMEOUT_SEC,
+            )
+        except Exception:
+            logger.exception("focuser for %s failed", agent_id)
 
     async def focus_next_pending(self) -> str | None:
         """Focus the oldest agent in `awaiting_input` whose focuser is registered.

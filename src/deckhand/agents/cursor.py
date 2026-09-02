@@ -6,7 +6,7 @@ Cursor's hook system (``~/.cursor/hooks.json``) and maps them onto AgentStatus.
 
 from __future__ import annotations
 
-from deckhand.agents.base import AgentBase, AgentStatus
+from deckhand.agents.base import AgentBase, AgentStatus, snippet
 from deckhand.orchestrator.events import build_event
 
 # Cursor hook event names (camelCase as emitted by Cursor).
@@ -44,15 +44,12 @@ class CursorAgent(AgentBase):
         self.session_id = session_id
         self.title = title
 
-    @property
-    def display_label(self) -> str:
+    def make_disambiguator(self) -> str:
         if self.title:
-            text = self.title.strip()
-            return text[:20] if len(text) > 20 else text
-        if self.project_root:
-            project_name = self.project_root.rstrip("/").rsplit("/", 1)[-1]
-            return f"cursor: {project_name}"
-        return self.id
+            clipped = snippet(self.title)
+            if clipped:
+                return clipped
+        return super().make_disambiguator()
 
     def as_dict(self) -> dict[str, object]:
         d = super().as_dict()

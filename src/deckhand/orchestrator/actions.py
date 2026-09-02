@@ -19,6 +19,8 @@ class OrchestratorActions(Protocol):
 
     def get_agent(self, agent_id: str) -> Any: ...
 
+    async def focus_agent(self, agent_id: str) -> None: ...
+
     async def focus_next_pending(self) -> str | None: ...
 
 
@@ -116,6 +118,12 @@ class ActionRegistry:
         async def focus_next_pending(payload: dict[str, object]) -> None:
             await self._orchestrator.focus_next_pending()
 
+        async def focus_agent(payload: dict[str, object]) -> None:
+            agent_id = payload.get("agent_id")
+            if not agent_id:
+                raise ValueError("agent_id is required")
+            await self._orchestrator.focus_agent(str(agent_id))
+
         async def focus_cursor_agent(payload: dict[str, object]) -> None:
             agent_id = payload.get("agent_id")
             if not agent_id:
@@ -178,6 +186,16 @@ class ActionRegistry:
             "ui.focus_cursor_agent",
             focus_cursor_agent,
             description="Focus Cursor on an agent's project (macOS opens Cursor locally)",
+            payload_schema={"agent_id": {"type": "string", "required": True}},
+        )
+        self.register(
+            "ui.focus_agent",
+            focus_agent,
+            description=(
+                "Focus a live agent's window/tab via its registered focuser "
+                "(iTerm for Claude Code, Cursor app for Cursor). No-op if "
+                "the agent has no focuser."
+            ),
             payload_schema={"agent_id": {"type": "string", "required": True}},
         )
         self.register(

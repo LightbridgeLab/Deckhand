@@ -128,6 +128,30 @@ class WidgetHandler:
             logger.exception("Failed to fetch state %s", state_key)
             await _set_title(ws, context, "Offline")
 
+    async def on_deckhand_connected(
+        self, ws: websockets.asyncio.client.ClientConnection
+    ) -> None:
+        """Re-sync all active widget instances when Deckhand Core connects."""
+        for context, watched in list(self._watched.items()):
+            state_key = watched.get("state_key", "")
+            if not state_key:
+                continue
+            display_format = watched.get("display_format", "raw")
+            button_title = watched.get("button_title", "") or ""
+            await self._apply_catalog_image(ws, context, state_key)
+            try:
+                entry = await self.bridge.get_state(state_key)
+                if entry:
+                    value = entry.get("value", {})
+                    watched["value"] = value
+                    title = _format_value(value, display_format, button_title)
+                    await _set_title(ws, context, title)
+                else:
+                    await _set_title(ws, context, "—")
+            except Exception:
+                logger.exception("Failed to re-sync state %s on connect", state_key)
+                await _set_title(ws, context, "Offline")
+
     async def _apply_catalog_image(
         self,
         ws: websockets.asyncio.client.ClientConnection,

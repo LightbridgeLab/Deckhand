@@ -13,11 +13,27 @@ STATUS_PRIORITY: dict[str, int] = {
 
 ATTENTION_STATUSES = frozenset({"awaiting_input", "error"})
 
+# Keep in sync with deckhand.agents.ranking.
+_FILTER_TYPES: dict[str, frozenset[str]] = {
+    "claude": frozenset({"claude_code"}),
+    "claude_code": frozenset({"claude_code"}),
+    "claude-code": frozenset({"claude_code"}),
+    "cursor": frozenset({"cursor", "cursor_cloud"}),
+    "cursor_cloud": frozenset({"cursor_cloud"}),
+    "mock": frozenset({"mock"}),
+    "demo": frozenset({"mock"}),
+}
+
 
 def matches_agent_filter(agent: dict[str, Any], agent_filter: str) -> bool:
-    if not agent_filter or agent_filter == "*":
+    raw = (agent_filter or "*").strip().lower()
+    if not raw or raw == "*":
         return True
-    return agent.get("type") == agent_filter
+    agent_type = str(agent.get("type") or "")
+    aliases = _FILTER_TYPES.get(raw)
+    if aliases is not None:
+        return agent_type in aliases
+    return agent_type == agent_filter or agent_type.lower() == raw
 
 
 def rank_agents(

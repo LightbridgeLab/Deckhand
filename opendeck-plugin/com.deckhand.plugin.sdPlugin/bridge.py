@@ -190,6 +190,7 @@ class DeckhandBridge:
         self,
         callback: Callable[[dict[str, Any]], Any],
         refresh: RefreshConnection | None = None,
+        on_connect: Callable[[], Any] | None = None,
     ) -> None:
         """Connect to Deckhand Core's event stream with automatic reconnection.
 
@@ -221,6 +222,14 @@ class DeckhandBridge:
                     self.connected = True
                     delay = _RECONNECT_BASE_DELAY  # Reset on successful connect
                     logger.info("Connected to Deckhand Core event stream")
+
+                    if on_connect is not None:
+                        try:
+                            res = on_connect()
+                            if asyncio.iscoroutine(res):
+                                await res
+                        except Exception:
+                            logger.exception("Error in on_connect callback")
 
                     async for msg in ws:
                         if msg.type == aiohttp.WSMsgType.TEXT:

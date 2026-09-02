@@ -7,6 +7,7 @@ import logging
 from typing import Any
 
 import websockets.asyncio.client
+from audio import DEFAULT_SOUND, play_sound
 from bridge import DeckhandBridge
 
 from actions.agent_ranking import agent_for_slot
@@ -15,6 +16,7 @@ from actions.agent_status import (
     STATUS_TITLES,
     _set_state,
     _set_title,
+    handle_awaiting_input_press,
 )
 
 logger = logging.getLogger("deckhand-action-slot")
@@ -39,6 +41,17 @@ class AgentSlotHandler:
     ) -> None:
         self._contexts[context] = {"settings": dict(settings)}
         await self._refresh(ws, context, settings)
+
+    async def on_deckhand_connected(
+        self, ws: websockets.asyncio.client.ClientConnection
+    ) -> None:
+        """Re-sync all active slot instances when Deckhand Core connects."""
+        for context, info in list(self._contexts.items()):
+            settings = info.get("settings", {})
+            try:
+                await self._refresh(ws, context, settings)
+            except Exception:
+                logger.exception("Failed to refresh agent slot %s on connect", context)
 
     async def on_will_disappear(self, context: str) -> None:
         self._stop_spinner(context)
@@ -72,7 +85,7 @@ class AgentSlotHandler:
                 await self.bridge.cancel_agent(agent_id)
             elif status == "awaiting_input":
                 default_input = settings.get("default_input", "")
-                await self.bridge.provide_input(agent_id, default_input)
+                await handle_awaiting_input_press(self.bridge, agent, default_input)
             elif status == "error":
                 await self.bridge.start_agent(agent_id)
         except Exception:
@@ -93,7 +106,9 @@ class AgentSlotHandler:
         context: str,
         payload: dict[str, Any],
     ) -> None:
-        pass
+        if payload.get("type") == "previewSound":
+            name = str(payload.get("sound_name") or DEFAULT_SOUND)
+            await play_sound(name)
 
     async def on_deckhand_event(
         self,
@@ -143,6 +158,8 @@ class AgentSlotHandler:
 
         if agent is None:
             self._stop_spinner(context)
+            if context in self._contexts:
+                self._contexts[context]["last_status"] = None
             await _set_state(ws, context, STATUS_INDEX["idle"])
             await _set_title(ws, context, "—")
             return
@@ -151,6 +168,22 @@ class AgentSlotHandler:
         label = agent.get("display_label", agent.get("id", ""))
         title = STATUS_TITLES.get(status, "") or label
         state_idx = STATUS_INDEX.get(status, 0)
+
+        info = self._contexts.get(context)
+        previous = info.get("last_status") if info else None
+        if info is not None and "last_status" not in info:
+            info["last_status"] = status
+        else:
+            if (
+                status == "awaiting_input"
+                and previous != "awaiting_input"
+                and settings.get("sounds_enabled", True)
+            ):
+                sound = settings.get("sound_name") or DEFAULT_SOUND
+                if sound:
+                    await play_sound(sound)
+            if info is not None:
+                info["last_status"] = status
 
         await _set_state(ws, context, state_idx)
         await _set_title(ws, context, title)

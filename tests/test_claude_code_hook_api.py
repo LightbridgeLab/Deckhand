@@ -47,6 +47,7 @@ async def test_hook_auto_registers_agent_on_first_sighting(
     assert body["agent"]["type"] == "claude_code"
     assert body["agent"]["project_root"] == "/tmp/my-project"
     assert body["agent"]["status"] == "idle"
+    assert body["agent"]["display_label"] == "Claude: my-project"
 
     # Agent shows up in /agents listing
     agents = (await client.get("/agents")).json()
@@ -333,6 +334,50 @@ async def test_focus_next_pending_action_against_live_orchestrator(
     finally:
         # Restore so other tests in the module pick up the real symbol.
         main_mod.make_iterm_focuser = iterm_mod.make_iterm_focuser  # type: ignore[assignment]
+
+
+async def test_hook_cwd_backfill_emits_context_changed(client: AsyncClient) -> None:
+    """A later hook that supplies cwd updates the label and notifies clients."""
+    import deckhand.main as main_mod
+
+    captured: list[str] = []
+    assert main_mod.orchestrator is not None
+    bus = main_mod.orchestrator.event_bus
+    original = bus.emit
+
+    async def capture(event: dict) -> None:
+        captured.append(event["type"])
+        await original(event)
+
+    bus.emit = capture  # type: ignore[method-assign]
+    session_id = "abcdabcd00000000"
+    await client.post(
+        "/agents/claude-code/hook",
+        json={"session_id": session_id, "hook_event_name": "SessionStart"},
+    )
+    row = next(
+        a
+        for a in (await client.get("/agents")).json()
+        if a["id"] == "claude-code-abcdabcd"
+    )
+    assert row["display_label"] == "Claude · abcdabcd"
+
+    await client.post(
+        "/agents/claude-code/hook",
+        json={
+            "session_id": session_id,
+            "hook_event_name": "UserPromptSubmit",
+            "cwd": "/tmp/backend",
+        },
+    )
+    assert "agent.context_changed" in captured
+    row = next(
+        a
+        for a in (await client.get("/agents")).json()
+        if a["id"] == "claude-code-abcdabcd"
+    )
+    assert row["project_root"] == "/tmp/backend"
+    assert row["display_label"] == "Claude: backend"
 
 
 async def test_hook_requires_auth(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -31,12 +31,40 @@
       <div class="sdpi-item-value">
         <label>
           <input type="checkbox" id="sounds_enabled" checked />
-          Play audio notifications
+          Play audio when this session needs input
         </label>
       </div>
     </div>
 
     <div class="sdpi-item">
+      <div class="sdpi-item-label">Sound</div>
+      <div class="sdpi-item-value select-with-action">
+        <select id="sound_name">
+          <option value="Glass" selected>Glass</option>
+          <option value="Ping">Ping</option>
+          <option value="Pop">Pop</option>
+          <option value="Tink">Tink</option>
+          <option value="Submarine">Submarine</option>
+          <option value="Sosumi">Sosumi</option>
+          <option value="Purr">Purr</option>
+          <option value="Funk">Funk</option>
+          <option value="Hero">Hero</option>
+          <option value="Bottle">Bottle</option>
+          <option value="Blow">Blow</option>
+          <option value="Basso">Basso</option>
+          <option value="Frog">Frog</option>
+          <option value="Morse">Morse</option>
+        </select>
+        <button type="button" id="preview_sound" title="Play a sample on this computer">Preview</button>
+      </div>
+    </div>
+
+    <div class="sdpi-info">
+      Sounds play through this Mac&rsquo;s speakers, not the Stream Deck.
+      Pick a different sound per button to tell sessions apart.
+    </div>
+
+    <div class="sdpi-item" id="default_input_item" style="display: none;">
       <div class="sdpi-item-label">Default Input</div>
       <div class="sdpi-item-value">
         <input type="text" id="default_input" placeholder="Text to send on input press" />
@@ -44,16 +72,14 @@
     </div>
 
     <div class="sdpi-info">
-      One press does different things depending on the agent&rsquo;s current status:
-      <br />&bull; <strong>Idle</strong> &mdash; start the agent
-      <br />&bull; <strong>Running</strong> &mdash; cancel the agent
-      <br />&bull; <strong>Awaiting Input</strong> &mdash; send Default Input to the agent
+      One press does different things depending on the session&rsquo;s current status:
+      <br />&bull; <strong>Idle</strong> &mdash; start (demo agents only; Claude/Cursor are already running)
+      <br />&bull; <strong>Running</strong> &mdash; cancel (local status only for Claude/Cursor)
+      <br />&bull; <strong>Awaiting Input</strong> &mdash; jump to that session so you can answer in the real UI
       <br />&bull; <strong>Error</strong> &mdash; restart the agent
       <br /><br />
-      Default Input examples (used only when status is Awaiting Input):
-      <br />&bull; <code>y</code> or <code>yes</code> &mdash; approve a permission prompt
-      <br />&bull; <code>n</code> or <code>no</code> &mdash; decline
-      <br />&bull; Leave empty &mdash; send an empty reply (only if the agent accepts blank input)
+      Deckhand cannot type Yes/No into Claude or Cursor. Default Input appears only
+      for demo agents that actually accept text.
     </div>
 
     <div class="sdpi-heading">Error Recovery</div>
@@ -93,6 +119,9 @@
     let pluginUUID = null;
     let actionInfo = null;
     let settings = {};
+    let lastAgents = [];
+
+    var STATUS_SORT = { awaiting_input: 0, error: 1, running: 2, idle: 3 };
 
     var AGENT_HELP_DEFAULT =
       "Pick a live session. Sessions appear only after a coding agent pings Deckhand " +
@@ -112,6 +141,9 @@
       // Apply saved settings to UI
       if (settings.sounds_enabled !== undefined) {
         document.getElementById("sounds_enabled").checked = settings.sounds_enabled;
+      }
+      if (settings.sound_name) {
+        document.getElementById("sound_name").value = settings.sound_name;
       }
       if (settings.default_input) {
         document.getElementById("default_input").value = settings.default_input;
@@ -161,6 +193,7 @@
     function populateAgentDropdown(agents, error, coreUrl) {
       var select = document.getElementById("agent_id");
       var help = document.getElementById("agent_help");
+      lastAgents = agents || [];
 
       select.innerHTML = "";
       var placeholder = document.createElement("option");
@@ -175,22 +208,51 @@
         placeholder.textContent = "No live sessions";
         help.textContent = AGENT_HELP_EMPTY;
       } else {
-        placeholder.textContent = "-- Select Agent --";
+        placeholder.textContent = "-- Select session --";
         help.textContent =
-          "Pick a live session. It disappears when that session ends; " +
-          "Refresh after starting a new one. Examples: Claude Code, Cursor, Codex, " +
-          "Antigravity — see the plugin README.";
+          "Pick a live session (tool + project). It disappears when that session ends; " +
+          "Refresh after starting a new one.";
       }
       select.appendChild(placeholder);
 
-      agents.forEach(function (agent) {
-        var opt = document.createElement("option");
-        opt.value = agent.id;
-        opt.textContent = agent.display_label || agent.id;
-        if (agent.id === settings.agent_id) {
-          opt.selected = true;
+      var sorted = agents.slice().sort(function (a, b) {
+        var ta = (a.type_label || a.type || "").toLowerCase();
+        var tb = (b.type_label || b.type || "").toLowerCase();
+        if (ta !== tb) return ta.localeCompare(tb);
+        var sa = STATUS_SORT[a.status] != null ? STATUS_SORT[a.status] : 9;
+        var sb = STATUS_SORT[b.status] != null ? STATUS_SORT[b.status] : 9;
+        if (sa !== sb) return sa - sb;
+        var la = (a.display_label || a.id || "").toLowerCase();
+        var lb = (b.display_label || b.id || "").toLowerCase();
+        return la.localeCompare(lb);
+      });
+
+      var groups = {};
+      var groupOrder = [];
+      sorted.forEach(function (agent) {
+        var key = agent.type_label || agent.type || "Other";
+        if (!groups[key]) {
+          groups[key] = [];
+          groupOrder.push(key);
         }
-        select.appendChild(opt);
+        groups[key].push(agent);
+      });
+
+      groupOrder.forEach(function (key) {
+        var optgroup = document.createElement("optgroup");
+        optgroup.label = key;
+        groups[key].forEach(function (agent) {
+          var opt = document.createElement("option");
+          opt.value = agent.id;
+          var label = agent.display_label || agent.id;
+          var status = agent.status ? "  [" + agent.status + "]" : "";
+          opt.textContent = label + status;
+          if (agent.id === settings.agent_id) {
+            opt.selected = true;
+          }
+          optgroup.appendChild(opt);
+        });
+        select.appendChild(optgroup);
       });
 
       // Keep a previously saved agent_id even if it is temporarily missing
@@ -204,12 +266,43 @@
         orphan.selected = true;
         select.appendChild(orphan);
       }
+
+      toggleDefaultInput();
+    }
+
+    function selectedAgentAcceptsText() {
+      var id = document.getElementById("agent_id").value;
+      var agent = lastAgents.filter(function (a) { return a.id === id; })[0];
+      var caps = (agent && agent.capabilities) || [];
+      return caps.indexOf("accepts_text") !== -1;
+    }
+
+    function toggleDefaultInput() {
+      var row = document.getElementById("default_input_item");
+      row.style.display = selectedAgentAcceptsText() ? "" : "none";
+    }
+
+    function previewSound() {
+      if (!websocket || websocket.readyState !== WebSocket.OPEN || !actionInfo) {
+        return;
+      }
+      websocket.send(JSON.stringify({
+        event: "sendToPlugin",
+        action: actionInfo.action,
+        context: pluginUUID,
+        payload: {
+          type: "previewSound",
+          sound_name: document.getElementById("sound_name").value,
+        },
+      }));
     }
 
     function saveSettings() {
       settings.agent_id = document.getElementById("agent_id").value;
       settings.sounds_enabled = document.getElementById("sounds_enabled").checked;
+      settings.sound_name = document.getElementById("sound_name").value;
       settings.default_input = document.getElementById("default_input").value;
+      toggleDefaultInput();
       settings.auto_retry = document.getElementById("auto_retry").checked;
       settings.retry_max = parseInt(document.getElementById("retry_max").value, 10);
 
@@ -225,6 +318,8 @@
     document.getElementById("agent_id").addEventListener("change", saveSettings);
     document.getElementById("refresh_agents").addEventListener("click", requestAgents);
     document.getElementById("sounds_enabled").addEventListener("change", saveSettings);
+    document.getElementById("sound_name").addEventListener("change", saveSettings);
+    document.getElementById("preview_sound").addEventListener("click", previewSound);
     document.getElementById("default_input").addEventListener("input", saveSettings);
     document.getElementById("auto_retry").addEventListener("change", saveSettings);
     document.getElementById("retry_max").addEventListener("change", saveSettings);

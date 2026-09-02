@@ -144,13 +144,13 @@ class TestAgentStatusHandler:
         mock_bridge.cancel_agent.assert_awaited_once_with("mock-1")
 
     async def test_key_down_provides_input(self, agent_handler, mock_ws, mock_bridge):
-        """Pressing a button for awaiting_input agent should send input."""
+        """Pressing awaiting_input on an accepts_text agent sends Default Input."""
         mock_bridge.list_agents.return_value = [
             {
                 "id": "mock-1",
                 "type": "mock",
                 "status": "awaiting_input",
-                "capabilities": [],
+                "capabilities": ["accepts_text"],
             },
         ]
         await agent_handler.on_key_down(
@@ -162,6 +162,29 @@ class TestAgentStatusHandler:
             },
         )
         mock_bridge.provide_input.assert_awaited_once_with("mock-1", "yes")
+
+    async def test_key_down_focuses_hook_driven_agent(
+        self, agent_handler, mock_ws, mock_bridge
+    ):
+        """Claude/Cursor cannot accept typed input — press focuses the session."""
+        mock_bridge.list_agents.return_value = [
+            {
+                "id": "claude-code-abc",
+                "type": "claude_code",
+                "status": "awaiting_input",
+                "capabilities": ["hook_driven"],
+            },
+        ]
+        await agent_handler.on_key_down(
+            mock_ws,
+            "ctx-1",
+            {"agent_id": "claude-code-abc", "default_input": "y"},
+        )
+        mock_bridge.execute_action.assert_awaited_once_with(
+            "ui.focus_agent",
+            {"agent_id": "claude-code-abc"},
+        )
+        mock_bridge.provide_input.assert_not_called()
 
     async def test_deckhand_event_updates_context(self, agent_handler, mock_ws):
         """agent.status_changed event should update watched contexts."""
@@ -805,3 +828,138 @@ class TestAgentDashboardSmartPress:
             "ui.focus_cursor_agent",
             {"agent_id": "cursor-aaa"},
         )
+
+
+# ---------------------------------------------------------------------------
+# Auto-Recovery on Deckhand Core connect
+# ---------------------------------------------------------------------------
+
+
+class TestAutoRecoveryOnConnect:
+    async def test_widget_resync_on_connect(self, mock_ws, mock_bridge):
+        """When Core reconnects, WidgetHandler re-fetches state for watched keys."""
+        # Initial will_appear when Core was offline (get_state raised)
+        mock_bridge.get_state.side_effect = ConnectionError("Core is offline")
+        handler = WidgetHandler(mock_bridge)
+        await handler.on_will_appear(
+            mock_ws,
+            "ctx-w1",
+            {"state_key": "usage.claude", "display_format": "percentage"},
+        )
+
+        sent = [json.loads(c.args[0]) for c in mock_ws.send.call_args_list]
+        offline_titles = [
+            m["payload"]["title"] for m in sent if m.get("event") == "setTitle"
+        ]
+        assert "Offline" in offline_titles
+
+        # Now Core comes online: get_state returns value
+        mock_bridge.get_state.side_effect = None
+        mock_bridge.get_state.return_value = {
+            "key": "usage.claude",
+            "value": {"percentage": 42.0},
+        }
+
+        mock_ws.send.reset_mock()
+        await handler.on_deckhand_connected(mock_ws)
+
+        sent_after = [json.loads(c.args[0]) for c in mock_ws.send.call_args_list]
+        titles_after = [
+            m["payload"]["title"] for m in sent_after if m.get("event") == "setTitle"
+        ]
+        assert any("42%" in t for t in titles_after)
+
+    async def test_agent_status_resync_on_connect(self, mock_ws, mock_bridge):
+        """When Core reconnects, AgentStatusHandler re-fetches live agents."""
+        mock_bridge.list_agents.side_effect = ConnectionError("Core is offline")
+        handler = AgentStatusHandler(mock_bridge)
+        await handler.on_will_appear(
+            mock_ws,
+            "ctx-a1",
+            {"agent_id": "mock-1"},
+        )
+
+        sent = [json.loads(c.args[0]) for c in mock_ws.send.call_args_list]
+        offline_titles = [
+            m["payload"]["title"] for m in sent if m.get("event") == "setTitle"
+        ]
+        assert "Offline" in offline_titles
+
+        # Core comes online
+        mock_bridge.list_agents.side_effect = None
+        mock_bridge.list_agents.return_value = [
+            {
+                "id": "mock-1",
+                "type": "mock",
+                "status": "running",
+                "display_label": "Worker 1",
+            },
+        ]
+
+        mock_ws.send.reset_mock()
+        await handler.on_deckhand_connected(mock_ws)
+
+        sent_after = [json.loads(c.args[0]) for c in mock_ws.send.call_args_list]
+        titles_after = [
+            m["payload"]["title"] for m in sent_after if m.get("event") == "setTitle"
+        ]
+        states_after = [
+            m["payload"]["state"] for m in sent_after if m.get("event") == "setState"
+        ]
+        assert "Running" in titles_after
+        assert 1 in states_after  # running state index
+
+    async def test_agent_dashboard_resync_on_connect(self, mock_ws, mock_bridge):
+        """When Core reconnects, AgentDashboardHandler re-refreshes its summary."""
+        from actions.agent_dashboard import AgentDashboardHandler
+
+        mock_bridge.list_agents.side_effect = ConnectionError("Core is offline")
+        handler = AgentDashboardHandler(mock_bridge)
+        await handler.on_will_appear(mock_ws, "ctx-dash", {"agent_filter": "*"})
+
+        # Core comes online
+        mock_bridge.list_agents.side_effect = None
+        mock_bridge.list_agents.return_value = [
+            {"id": "c1", "type": "claude", "status": "running"},
+            {"id": "c2", "type": "claude", "status": "awaiting_input"},
+        ]
+
+        mock_ws.send.reset_mock()
+        await handler.on_deckhand_connected(mock_ws)
+
+        sent_after = [json.loads(c.args[0]) for c in mock_ws.send.call_args_list]
+        titles = [
+            m["payload"]["title"] for m in sent_after if m.get("event") == "setTitle"
+        ]
+        assert len(titles) > 0
+        assert "1> 1?" in titles[0]
+
+    async def test_agent_slot_resync_on_connect(self, mock_ws, mock_bridge):
+        """When Core reconnects, AgentSlotHandler binds the highest priority agent."""
+        from actions.agent_slot import AgentSlotHandler
+
+        mock_bridge.list_agents.side_effect = ConnectionError("Core is offline")
+        handler = AgentSlotHandler(mock_bridge)
+        await handler.on_will_appear(
+            mock_ws, "ctx-s1", {"slot_index": 1, "agent_filter": "*"}
+        )
+
+        # Core comes online
+        mock_bridge.list_agents.side_effect = None
+        mock_bridge.list_agents.return_value = [
+            {
+                "id": "c1",
+                "type": "claude",
+                "status": "awaiting_input",
+                "display_label": "Claude 1",
+            },
+        ]
+
+        mock_ws.send.reset_mock()
+        await handler.on_deckhand_connected(mock_ws)
+
+        sent_after = [json.loads(c.args[0]) for c in mock_ws.send.call_args_list]
+        titles = [
+            m["payload"]["title"] for m in sent_after if m.get("event") == "setTitle"
+        ]
+        assert "Input!" in titles

@@ -28,7 +28,7 @@ async def test_initial_state_is_idle() -> None:
     )
     assert agent.status == AgentStatus.IDLE
     assert agent.type == "cursor"
-    assert agent.display_label == "Fix bug"
+    assert agent.display_label == "Cursor: proj"
     assert agent.as_dict()["session_id"] == "abc12345-full"
 
 

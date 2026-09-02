@@ -150,7 +150,7 @@ def normalize_cursor_payload(
         status = raw.get("deckhand_status")
         if not isinstance(status, str):
             status = None
-        # Default for stop matches examples/cursor_hooks.json
+        # Default for stop matches docs/examples/cursor_hooks.json
         if status is None and event_name == "stop":
             status = "awaiting_input"
 
